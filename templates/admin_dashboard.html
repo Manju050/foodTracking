@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    body {
+      background-color: #f5f7fa;
+    }
+    .card {
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      border-radius: 12px;
+    }
+    .low-stock-badge {
+      font-size: 0.75rem;
+    }
+    .header-section {
+      border-bottom: 2px solid #0d6efd;
+      margin-bottom: 1.5rem;
+      padding-bottom: 0.5rem;
+    }
+    /* Avatar circle for users */
+    .avatar {
+      background-color: #6c757d;
+      color: white;
+      border-radius: 50%;
+      width: 45px;
+      height: 45px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-weight: 700;
+      font-size: 1.25rem;
+      margin-right: 12px;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container my-5">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h1 class="header-section text-primary">Admin Dashboard</h1>
+
+      <div class="d-flex flex-column align-items-end">
+        <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-lg mb-3">Logout</a>
+        <div class="p-3 bg-primary text-white rounded shadow" style="min-width: 180px; font-weight: 600; font-size: 1.1rem; text-align: center;">
+          Devotees Served
+          <div id="devotees-served" style="font-size: 2rem; margin-top: 5px;">{{ counters | sum(attribute='people_served') }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-3 mb-4">
+      <a href="{{ url_for('create_counter') }}" class="btn btn-primary btn-lg flex-grow-1 shadow-sm">Create New Counter</a>
+      <a href="{{ url_for('create_user') }}" class="btn btn-success btn-lg flex-grow-1 shadow-sm">Create New User</a>
+    </div>
+
+    <div class="row g-4">
+
+      <!-- Counters Section -->
+      <div class="col-lg-6">
+        <h3 class="mb-3">Counters</h3>
+        <div id="counters-container">
+          <!-- Will be dynamically populated by JavaScript -->
+        </div>
+      </div>
+
+      <!-- Users Section -->
+      <div class="col-lg-6">
+        <h3 class="mb-3">Users</h3>
+        <div id="users-container">
+          <!-- Will be dynamically populated by JavaScript -->
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    async function fetchAdminData() {
+      try {
+        const response = await fetch('{{ url_for("admin_data") }}', {cache: "no-store"});
+        if (!response.ok) throw new Error('Network response was not OK');
+        const data = await response.json();
+
+        // Update Devotees Served count
+        const devoteesServedElement = document.getElementById('devotees-served');
+        if (devoteesServedElement) {
+          devoteesServedElement.textContent = data.total_devotees_served;
+        }
+
+        // Update Counters Section
+        const countersContainer = document.getElementById('counters-container');
+        if (countersContainer) {
+          countersContainer.innerHTML = ''; // Clear existing content
+          data.counters.forEach(counter => {
+            let lowStockContent = '';
+            if (counter.low_items.length) {
+              lowStockContent = `<span class="badge bg-danger low-stock-badge mt-2">Low stock: ${counter.low_items.length} item${counter.low_items.length > 1 ? 's' : ''}</span><ul class="list-unstyled mt-2 mb-0">`;
+              counter.low_items.forEach(item => {
+                lowStockContent += `<li><strong>${item.name}</strong> (${item.remaining} left)</li>`;
+              });
+              lowStockContent += '</ul>';
+            } else {
+              lowStockContent = `<span class="badge bg-success low-stock-badge mt-2">Stock levels good</span>`;
+            }
+            countersContainer.innerHTML += `
+              <div class="card p-3 mb-3">
+                <div class="d-flex justify-content-between align-items-start">
+                  <div>
+                    <h5 class="card-title mb-1">${counter.name}</h5>
+                    <p class="mb-1 text-muted">Items: ${counter.items_count}</p>
+                    <p class="mb-0 text-muted">People Served: ${counter.people_served}</p>
+                    ${lowStockContent}
+                  </div>
+                  <form method="post" action="/admin/delete_counter/${counter.id}" onsubmit="return confirm('Delete this counter and all its data?');">
+                    <button type="submit" class="btn btn-outline-danger btn-sm shadow-sm align-self-start">Delete</button>
+                  </form>
+                </div>
+              </div>`;
+          });
+        }
+
+        // Update Users Section with better styling
+        const usersContainer = document.getElementById('users-container');
+        if (usersContainer) {
+          usersContainer.innerHTML = '';
+          if (data.users.length > 0) {
+            data.users.forEach(user => {
+              usersContainer.innerHTML += `
+                <div class="card shadow-sm rounded mb-3 p-3 d-flex flex-row align-items-center">
+                  <div class="avatar">${user.username.charAt(0).toUpperCase()}</div>
+                  <div class="flex-grow-1">
+                    <h6 class="mb-1">${user.username}</h6>
+                    <small class="text-muted">Counter: ${user.counter_name || 'None'}</small>
+                  </div>
+                  <form method="post" action="/admin/delete_user/${user.id}" onsubmit="return confirm('Delete this user?');" class="mb-0">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                  </form>
+                </div>`;
+            });
+          } else {
+            usersContainer.innerHTML = '<p>No users found.</p>';
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch admin data:', error);
+      }
+    }
+
+    // Initial fetch
+    fetchAdminData();
+
+    // Refresh every 20 seconds
+    setInterval(fetchAdminData, 2000);
+  </script>
+</body>
+</html>

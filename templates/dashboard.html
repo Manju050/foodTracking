@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ counter.name }} Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    body {
+      background-color: #f8f9fa;
+    }
+    .container {
+      margin-top: 40px;
+      max-width: 900px;
+    }
+    .card {
+      border-radius: 12px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .table thead th, .table tbody td {
+      text-align: center;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h1 class="text-primary">{{ counter.name }} Dashboard</h1>
+      <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-lg">Logout</a>
+    </div>
+
+    <div class="row g-4 mb-4">
+      <div class="col-md-4">
+        <div class="card p-4 text-center bg-info text-white shadow-sm">
+          <h5>Remaining Food</h5>
+          <div class="display-5 fw-bold">{{ remaining_food }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card p-4 text-center bg-success text-white shadow-sm">
+          <h5>Devotees Served</h5>
+          <div class="display-5 fw-bold">{{ counter.people_served }}</div>
+        </div>
+      </div>
+      <div class="col-md-4 d-flex align-items-center justify-content-center">
+        <form action="{{ url_for('increment_people_served') }}" method="post" class="w-100">
+          <button type="submit" class="btn btn-primary btn-lg w-100 shadow-sm">Increment Devotees Served</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <a href="{{ url_for('add_item') }}" class="btn btn-primary btn-lg shadow-sm">Add New Item</a>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-bordered table-striped table-hover align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>Item</th>
+            <th>Total Quantity</th>
+            <th>Consumed Quantity</th>
+            <th>Update Consumed</th>
+            <th>Delete Item</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td>{{ item.name }}</td>
+            <td>{{ item.total_quantity }}</td>
+            <td>{{ item.consumed_quantity }}</td>
+            <td>
+              <form action="{{ url_for('update_item', item_id=item.id) }}" method="post" class="d-flex justify-content-center">
+                <input type="number" min="0" max="{{ item.total_quantity }}" name="consumed_quantity" required class="form-control me-2" style="max-width: 110px;" />
+                <button type="submit" class="btn btn-outline-primary">Update</button>
+              </form>
+            </td>
+            <td>
+              <form action="{{ url_for('delete_item', item_id=item.id) }}" method="post" onsubmit="return confirm('Delete this item?');">
+                <button type="submit" class="btn btn-outline-danger">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" class="text-center">No items found.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
