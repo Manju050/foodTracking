@@ -9,7 +9,7 @@ app.secret_key = 'supersecretkey'
 
 # Use local PostgreSQL or environment variable DATABASE_URL
 POSTGRES_LOCAL_URI = 'postgresql://manju:password@localhost/postgres'
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or POSTGRES_LOCAL_URI
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or 'postgresql://localhost/yourlocaldb'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
