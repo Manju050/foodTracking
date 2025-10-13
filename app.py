@@ -259,6 +259,30 @@ def create_user():
 @app.route('/init-db')
 def init_db():
     db.create_all()
+    if not Counter.query.first():
+        c1 = Counter(name='Counter 1')
+        c2 = Counter(name='Counter 2')
+        db.session.add_all([c1, c2])
+        db.session.commit()
+        items_c1 = [Item(name='Item A', total_quantity=100, counter=c1),
+                    Item(name='Item B', total_quantity=80, counter=c1)]
+        items_c2 = [Item(name='Item C', total_quantity=120, counter=c2),
+                    Item(name='Item D', total_quantity=90, counter=c2)]
+        db.session.add_all(items_c1 + items_c2)
+        db.session.commit()
+        u1 = User(username='volunteer1', counter=c1)
+        u1.set_password('password1')
+        u2 = User(username='volunteer2', counter=c2)
+        u2.set_password('password2')
+        db.session.add_all([u1, u2])
+        db.session.commit()
+
+    if not User.query.filter_by(is_admin=True).first():
+        admin = User(username='admin', is_admin=True)
+        admin.set_password('adminpass')
+        db.session.add(admin)
+        db.session.commit()
+            
     return 'DB Tables Created'
 
 
