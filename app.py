@@ -16,6 +16,8 @@ db = SQLAlchemy(app)
 
 # Models
 class User(db.Model):
+    __tablename__ = 'users'  # Explicit table name to avoid reserved keyword conflicts
+
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
@@ -27,6 +29,7 @@ class User(db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
 
 class Counter(db.Model):
     id = db.Column(db.Integer, primary_key=True)
