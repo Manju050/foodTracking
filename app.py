@@ -256,6 +256,12 @@ def create_user():
             return redirect(url_for('admin_dashboard'))
     return render_template('create_user.html', counters=counters)
 
+@app.route('/init-db')
+def init_db():
+    db.create_all()
+    return 'DB Tables Created'
+
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
