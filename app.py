@@ -852,6 +852,15 @@ def init_db():
 
         # Create all tables
         db.create_all()
+# Create default admin if none exists
+        admin_user = User.query.filter_by(is_admin=True).first()
+        if not admin_user:
+            admin_password = 'adminpass'  # Change to secure password or load from env
+            admin = User(username='admin', is_admin=True)
+            admin.set_password(admin_password)
+            db.session.add(admin)
+            db.session.commit()
+            print('Default admin user created with username: admin and password: adminpass')
 
         return "Database tables deleted and recreated successfully.", 200
     except Exception as e:
