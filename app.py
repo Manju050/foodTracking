@@ -839,7 +839,7 @@ def sync_initial_items_to_counters():
 
     db.session.commit()
 
-@app.route('/admin/init_db', methods=['POST'])
+@app.route('/admin/init_db', methods=['GET','POST'])
 @admin_required
 def init_db():
     try:
