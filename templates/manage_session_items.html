@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Manage Session Items - {{ session.session_name }}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <form method="post" action="{{ url_for('delete_session', session_id=session.id) }}" onsubmit="return confirm('Are you sure you want to delete this session and all its items?');">
+    <button type="submit" class="btn btn-danger mb-4">Delete This Session</button>
+</form>
+
+  <script>
+    // Adds a new empty item row
+    function addItemRow() {
+  const container = document.getElementById('items-container');
+  const row = document.createElement('div');
+  row.className = 'input-group mb-2';
+  row.innerHTML = `
+    <input type="hidden" name="item_id" value="" />
+    <input type="text" name="item_name" placeholder="Item Name" class="form-control" required />
+    <input type="number" name="total_prepared" min="0" placeholder="Total Prepared" class="form-control" required />
+    <button type="button" class="btn btn-danger" onclick="this.parentNode.remove()">Remove</button>`;
+  container.appendChild(row);
+}
+
+
+    // Initialize at least one item row on load
+    window.onload = () => {
+      if (document.getElementById('items-container').children.length === 0) {
+        addItemRow();
+      }
+    };
+  </script>
+</head>
+<body>
+  <div class="container my-5">
+    <h2>Manage Items for Session: <strong>{{ session.session_name }}</strong></h2>
+
+    <form method="post">
+  <div id="items-container" class="mb-3">
+    {% for item in items %}
+      <div class="input-group mb-2">
+        <input type="hidden" name="item_id" value="{{ item.id }}" />
+        <input type="text" name="item_name" value="{{ item.name }}" placeholder="Item Name" class="form-control" required />
+        <input type="number" name="total_prepared" min="0" value="{{ item.total_prepared }}" placeholder="Total Prepared" class="form-control" required />
+        <button type="button" class="btn btn-danger" onclick="this.parentNode.remove()">Remove</button>
+      </div>
+    {% else %}
+      <!-- No items yet -->
+    {% endfor %}
+  </div>
+
+  <button type="button" class="btn btn-secondary mb-3" onclick="addItemRow()">Add Item</button><br />
+
+  <button type="submit" class="btn btn-primary">Save Items</button>
+  <a href="{{ url_for('initial_prepared') }}" class="btn btn-link">Back to Sessions</a>
+</form>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

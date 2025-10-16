@@ -1,100 +1,97 @@
+
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{{ counter.name }} Dashboard</title>
+  <title>Counter Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <style>
-    body {
-      background-color: #f8f9fa;
-    }
-    .container {
-      margin-top: 40px;
-      max-width: 900px;
-    }
-    .card {
-      border-radius: 12px;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
-    .table thead th, .table tbody td {
-      text-align: center;
-      vertical-align: middle;
-    }
-  </style>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
 </head>
+
+{% if no_active_session %}
+  <div class="alert alert-warning text-center fw-bold">
+    No active session is currently set.<br/>
+    Please wait until a new session is activated or try again later.
+  </div>
+{% else %}
+
 <body>
-  <div class="container">
-
+  <div class="container my-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h1 class="text-primary">{{ counter.name }} Dashboard</h1>
-      <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-lg">Logout</a>
+      <h1 class="text-success mb-0">My Counter Dashboard</h1>
+      <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">
+        <i class="bi bi-box-arrow-right"></i> Logout
+      </a>
     </div>
+{% if active_session %}
+  <div class="alert alert-info">
+    Current Active Session: <strong>{{ active_session.session_name }}</strong>  </div>
+{% else %}
+  <div class="alert alert-warning">
+    No active session currently set.
+  </div>
+{% endif %}
 
-    <div class="row g-4 mb-4">
-      <div class="col-md-4">
-        <div class="card p-4 text-center bg-info text-white shadow-sm">
-          <h5>Remaining Food</h5>
-          <div class="display-5 fw-bold">{{ remaining_food }}</div>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="card p-4 text-center bg-success text-white shadow-sm">
-          <h5>Devotees Served</h5>
-          <div class="display-5 fw-bold">{{ counter.people_served }}</div>
-        </div>
-      </div>
-      <div class="col-md-4 d-flex align-items-center justify-content-center">
-        <form action="{{ url_for('increment_people_served') }}" method="post" class="w-100">
-          <button type="submit" class="btn btn-primary btn-lg w-100 shadow-sm">Increment Devotees Served</button>
-        </form>
-      </div>
-    </div>
+    <!-- Counter selector dropdown -->
+    <form method="get" action="{{ url_for('home') }}" class="mb-4">
+      <label for="counterSelect" class="form-label fw-semibold">Select Counter</label>
+      <select id="counterSelect" name="counter_id" class="form-select" onchange="this.form.submit()" required>
+        <option value="" disabled {% if not counter %}selected{% endif %}>Choose your counter</option>
+        {% for c in counters %}
+          <option value="{{ c.id }}" {% if counter and c.id == counter.id %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+      <noscript><button type="submit" class="btn btn-primary mt-2">Load Counter</button></noscript>
+    </form>
 
-    <div class="mb-3">
-      <a href="{{ url_for('add_item') }}" class="btn btn-primary btn-lg shadow-sm">Add New Item</a>
-    </div>
+    {% if counter %}
+      <h3>Counter: {{ counter.name }}</h3>
 
-    <div class="table-responsive">
-      <table class="table table-bordered table-striped table-hover align-middle">
-        <thead class="table-dark">
-          <tr>
-            <th>Item</th>
-            <th>Total Quantity</th>
-            <th>Consumed Quantity</th>
-            <th>Update Consumed</th>
-            <th>Delete Item</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in items %}
-          <tr>
-            <td>{{ item.name }}</td>
-            <td>{{ item.total_quantity }}</td>
-            <td>{{ item.consumed_quantity }}</td>
-            <td>
-              <form action="{{ url_for('update_item', item_id=item.id) }}" method="post" class="d-flex justify-content-center">
-                <input type="number" min="0" max="{{ item.total_quantity }}" name="consumed_quantity" required class="form-control me-2" style="max-width: 110px;" />
-                <button type="submit" class="btn btn-outline-primary">Update</button>
-              </form>
-            </td>
-            <td>
-              <form action="{{ url_for('delete_item', item_id=item.id) }}" method="post" onsubmit="return confirm('Delete this item?');">
-                <button type="submit" class="btn btn-outline-danger">Delete</button>
-              </form>
-            </td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="5" class="text-center">No items found.</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+<form method="post" action="{{ url_for('update_available_stock', counter_id=counter.id, session_id=active_session.id) }}">
+  <table class="table table-bordered table-hover">
+    <thead class="table-light">
+      <tr>
+        <th>Item Name</th>
+        <th>Available Stock With Me</th>
+        <th>Update Available Stock</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ item.item_name }}</td>
+        <td>{{ item.available_stock or 0 }}</td>
+        <td>
+          <input 
+            type="number" 
+            name="available_stock_{{ item.id }}" 
+            value="{{ item.available_stock or 0 }}" 
+            min="0" 
+            style="width:90px;" 
+            required 
+            class="form-control"
+          >
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="3" class="text-center">No items found. Please add new items.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <button type="submit" class="btn btn-primary">Update Stocks</button>
+</form>
 
+    {% else %}
+      <p class="text-muted">Please select a counter to manage its available stock.</p>
+    {% endif %}
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
+
+{% endif %}
 </html>
