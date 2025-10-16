@@ -839,14 +839,20 @@ def sync_initial_items_to_counters():
 
     db.session.commit()
 
-@app.route('/admin/init_db', methods=['GET','POST'])
+from sqlalchemy import text
+
+@app.route('/admin/init_db', methods=['POST'])
 @admin_required
 def init_db():
     try:
-        # Drop all tables
-        db.drop_all()
+        # Drop all tables with cascade
+        db.session.execute(text('DROP SCHEMA public CASCADE;'))
+        db.session.execute(text('CREATE SCHEMA public;'))
+        db.session.commit()
+
         # Create all tables
         db.create_all()
+
         return "Database tables deleted and recreated successfully.", 200
     except Exception as e:
         return f"Error initializing database: {str(e)}", 500
