@@ -6,13 +6,97 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
   <style>
+    body {
+      background: linear-gradient(120deg, #f8fafc 0%, #e3f0ff 100%);
+      min-height: 100vh;
+    }
+    .container {
+      background: #fff;
+      border-radius: 18px;
+      box-shadow: 0 6px 32px rgba(0,0,0,0.08);
+      padding: 2.5rem 2rem 2rem 2rem;
+      margin-top: 3rem;
+      margin-bottom: 3rem;
+    }
     .active-session {
       font-weight: 700;
       color: #0d6efd;
       background-color: #dbe4ff;
       border-radius: 5px;
       padding: 0.3rem 0.6rem;
+      box-shadow: 0 1px 4px rgba(13,110,253,0.08);
+    }
+    .list-group-item {
+      background: #f8f9fa;
+      border: none;
+      border-radius: 8px !important;
+      margin-bottom: 0.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .list-group-item .btn-primary {
+      background: linear-gradient(90deg, #0d6efd 70%, #5bc0f8 100%);
+      border: none;
+    }
+    .form-label {
+      font-weight: 600;
+      color: #0d6efd;
+    }
+    .input-group input {
+      border-radius: 8px !important;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .btn-secondary {
+      background: #e3f0ff;
+      color: #0d6efd;
+      border: none;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .btn-secondary:hover {
+      background: #b6d4fe;
+      color: #0a58ca;
+    }
+    .btn-primary {
+      background: linear-gradient(90deg, #0d6efd 70%, #5bc0f8 100%);
+      border: none;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(13,110,253,0.08);
+    }
+    .btn-outline-primary {
+      border-radius: 8px;
+      font-weight: 600;
+    }
+    .table {
+      border-radius: 12px;
+      overflow: hidden;
+      background: #f8fafc;
+      box-shadow: 0 1px 8px rgba(0,0,0,0.04);
+    }
+    .table th, .table td {
+      vertical-align: middle;
+    }
+    .badge {
+      font-size: 1rem;
+      padding: 0.5em 1em;
+      border-radius: 8px;
+    }
+    h2, h4 {
+      letter-spacing: 0.5px;
+      font-family: 'Segoe UI', 'Arial', sans-serif;
+    }
+    .input-group .btn-danger {
+      border-radius: 8px;
+      margin-left: 0.5rem;
+    }
+    @media (max-width: 768px) {
+      .container {
+        padding: 1rem;
+      }
+      .list-group.w-50 {
+        width: 100% !important;
+      }
     }
   </style>
   <script>
@@ -23,7 +107,9 @@
       row.innerHTML = `
         <input type="text" name="item_name" placeholder="Item Name" class="form-control" required />
         <input type="number" name="total_prepared" min="0" placeholder="Total Prepared" class="form-control" required />
-        <button type="button" class="btn btn-danger" onclick="this.parentNode.remove()">Remove</button>`;
+        <button type="button" class="btn btn-danger" onclick="this.parentNode.remove()">
+          <i class="bi bi-x-circle"></i>
+        </button>`;
       container.appendChild(row);
     }
     window.onload = () => addItemRow();
@@ -41,25 +127,38 @@
       {% endif %}
     {% endwith %}
   <div class="container my-5">
-    <h2>Initial Prepared Session Setup</h2>
-
+    <h2 class="text-primary fw-bold mb-4" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">
+      <i class="bi bi-journal-plus me-2"></i>Initial Prepared Session Setup
+    </h2>
+  <div style="position: absolute; top: 1rem; right: 1rem; z-index: 1050;">
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-primary">
+      <i class="bi bi-arrow-left-circle me-2"></i> Back to Admin Dashboard
+    </a>
+  </div>
     {% if active_session %}
-      <p>Current Active Session: <span class="active-session">{{ active_session.session_name }}</span> (Created on {{ active_session.created_at.strftime('%Y-%m-%d %H:%M') }})</p>
+      <p>Current Active Session: <span class="active-session">{{ active_session.session_name }}</span> <span class="text-muted small">(Created on {{ active_session.created_at.strftime('%Y-%m-%d %H:%M') }})</span></p>
     {% else %}
-      <p class="text-danger fw-bold">No session is currently active.</p>
+      <div class="alert alert-warning text-center fw-bold py-2" style="font-size: 1rem; border: 1.5px solid #ffc107;">
+      <i class="bi bi-exclamation-triangle-fill me-2" style="font-size: 1.3rem; vertical-align: middle;"></i>
+      No session is currently active.
+      </div>
     {% endif %}
 
     <section class="mb-4">
-      <h4>Manage Existing Sessions</h4>
+      <h4 class="mb-3"><i class="bi bi-list-task me-2"></i>Manage Existing Sessions</h4>
       <ul class="list-group w-50">
         {% for session in sessions %}
           <li class="list-group-item d-flex justify-content-between align-items-center">
-            {% if active_session and session.id == active_session.id %}
-              <span class="active-session">{{ session.session_name }} ({{ session.created_at.strftime('%Y-%m-%d %H:%M') }})</span>
-            {% else %}
-              {{ session.session_name }} ({{ session.created_at.strftime('%Y-%m-%d %H:%M') }})
-            {% endif %}
-            <a href="{{ url_for('manage_session_items', session_id=session.id) }}" class="btn btn-sm btn-primary">Manage Items</a>
+            <div>
+              {% if active_session and session.id == active_session.id %}
+                <span class="active-session">{{ session.session_name }} ({{ session.created_at.strftime('%Y-%m-%d %H:%M') }})</span>
+              {% else %}
+                {{ session.session_name }} ({{ session.created_at.strftime('%Y-%m-%d %H:%M') }})
+              {% endif %}
+            </div>
+            <a href="{{ url_for('manage_session_items', session_id=session.id) }}" class="btn btn-sm btn-primary">
+              <i class="bi bi-pencil-square"></i> Manage Items
+            </a>
           </li>
         {% else %}
           <li class="list-group-item">No sessions found. Please create some initial prepared sessions.</li>
@@ -67,28 +166,28 @@
       </ul>
     </section>
 
-<h2 class="text-left text-primary fw-bold my-4" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">
-Create New Session    
-</h2>
-    <form method="post">
+    <h2 class="text-left text-primary fw-bold my-4" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">
+      <i class="bi bi-plus-circle me-2"></i>Create New Session    
+    </h2>
+    <form method="post" autocomplete="off">
       <div class="mb-3">
         <label for="session_name" class="form-label">Session Name (e.g., Monday Breakfast)</label>
         <input type="text" name="session_name" id="session_name" class="form-control" required />
       </div>
       <div id="items-container"></div>
-      <button type="button" class="btn btn-secondary mb-3" onclick="addItemRow()">Add Item</button><br/>
-      <button type="submit" class="btn btn-primary">Save Session</button>
+      <button type="button" class="btn btn-secondary mb-3" onclick="addItemRow()">
+        <i class="bi bi-plus-lg"></i> Add Item
+      </button><br/>
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-save me-1"></i>Save Session
+      </button>
     </form>
-    <div class="mt-3">
-      <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-primary">
-        <i class="bi bi-arrow-left-circle me-2"></i> Back to Admin Dashboard
-      </a>
-    </div>
+
     <section class="mt-5">
 
       <h2 class="text-left text-primary fw-bold my-4" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">
-      All Created Sessions and Status      
-    </h2>
+        <i class="bi bi-table me-2"></i>All Created Sessions and Status      
+      </h2>
       <div class="table-responsive">
         <table class="table table-striped table-bordered align-middle">
           <thead class="table-primary">
@@ -105,9 +204,9 @@ Create New Session
                 <td>{{ session.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                 <td>
                   {% if session.is_active %}
-                    <span class="badge bg-success">Active</span>
+                    <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Active</span>
                   {% else %}
-                    <span class="badge bg-secondary">Inactive</span>
+                    <span class="badge bg-secondary"><i class="bi bi-x-circle me-1"></i>Inactive</span>
                   {% endif %}
                 </td>
               </tr>
