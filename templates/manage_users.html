@@ -52,7 +52,17 @@
           <tr>
             <td>{{ user.id }}</td>
             <td>{{ user.username }}</td>
-            <td>{{ 'Yes' if user.is_admin else 'No' }}</td>
+            
+<td>
+  {{ 'Yes' if user.is_admin else 'No' }}
+  <form method="post" action="{{ url_for('toggle_admin_privilege', user_id=user.id) }}" style="display:inline;">
+    <button type="submit" class="btn btn-primary ms-2">
+      Toggle Admin
+    </button>
+  </form>
+</td>
+
+
             <td>
               <form method="post" action="{{ url_for('delete_user', user_id=user.id) }}" onsubmit="return confirm('Delete user {{user.username}}?');" style="display:inline;">
                 <button type="submit" class="btn btn-danger btn-sm">Delete</button>

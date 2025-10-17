@@ -8,6 +8,7 @@ import csv
 from datetime import datetime
 from io import BytesIO
 import re
+import pytz
 
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
@@ -85,14 +86,16 @@ class GlobalStats(db.Model):
     session_id = db.Column(db.Integer, db.ForeignKey('initial_prepared_session.id'), nullable=True)
 
 
-from datetime import datetime
-
 class FeedingSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(1000), nullable=False)
     data = db.Column(db.Text, nullable=False)
-    session_id = db.Column(db.Integer, db.ForeignKey('initial_prepared_session.id'), nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)  # add this if missing
+    session_id = db.Column(
+        db.Integer, 
+        db.ForeignKey('initial_prepared_session.id', ondelete='CASCADE'), 
+        nullable=False
+    )
 
 # Decorators
 def login_required(f):
@@ -178,6 +181,16 @@ def volunteer_required(f):
             abort(403)
         return f(*args, **kwargs)
     return decorated_function
+
+@app.route('/admin/toggle_admin/<int:user_id>', methods=['POST'])
+@admin_required
+def toggle_admin_privilege(user_id):
+    user = User.query.get_or_404(user_id)
+    user.is_admin = not user.is_admin
+    db.session.commit()
+    flash(f"Admin privilege {'granted' if user.is_admin else 'revoked'} for user {user.username}.", "success")
+    return redirect(url_for('manage_users'))
+
 
 @app.route('/counter_dashboard', methods=['GET', 'POST'])
 @login_required
@@ -307,8 +320,19 @@ def initial_prepared():
         if InitialPreparedSession.query.filter_by(session_name=session_name).first():
             return "Session name already exists", 400
 
+        # Get current UTC time (or modify your datetime source accordingly)
+        utc_now = datetime.utcnow().replace(tzinfo=pytz.utc)
+
+        # Define IST timezone
+        ist = pytz.timezone('Asia/Kolkata')
+
+        # Convert UTC time to IST
+        ist_now = utc_now.astimezone(ist)
+
+        # Format timestamp for filename (safe format without spaces/colons)
+        timestamp_str = ist_now.strftime("%Y-%m-%d_%H:%M:%S")
         # Create session
-        new_session = InitialPreparedSession(session_name=session_name)
+        new_session = InitialPreparedSession(session_name=session_name,created_at=timestamp_str)
         db.session.add(new_session)
         db.session.flush()  # to get new_session.id
 
@@ -596,12 +620,24 @@ def save_snapshot():
     # Generate safe filename
     def sanitize_filename(s):
         return re.sub(r'[^a-zA-Z0-9-_]', '_', s)
-    import datetime
 
 
-    timestamp = datetime.datetime.now()
+    # Get current UTC time (or modify your datetime source accordingly)
+    utc_now = datetime.utcnow().replace(tzinfo=pytz.utc)
+    
+    # Define IST timezone
+    ist = pytz.timezone('Asia/Kolkata')
+    
+    # Convert UTC time to IST
+    ist_now = utc_now.astimezone(ist)
+    
+    # Format timestamp for filename (safe format without spaces/colons)
+    timestamp_str = ist_now.strftime("%Y-%m-%d_%H:%M:%S")
+    
+    # Use in filename
     safe_session_name = sanitize_filename(active_session.session_name or "session")
-    filename = f"{safe_session_name}_{total_devotees_taken}_prasadam_count_{timestamp}.csv"
+    filename = f"{safe_session_name}_{total_devotees_taken}_prasadam_count_{timestamp_str}.csv"
+
 
     output = StringIO()
     writer = csv.writer(output)
@@ -626,7 +662,7 @@ def save_snapshot():
         writer.writerow([name, T, S, x, consumed, total_devotees_taken, est_available])
 
     # Save feeding session snapshot in DB linked to current session
-    snapshot = FeedingSession(data=output.getvalue(), session_id=active_session.id,filename=filename,timestamp=timestamp)
+    snapshot = FeedingSession(data=output.getvalue(), session_id=active_session.id,filename=filename,timestamp=timestamp_str)
     db.session.add(snapshot)
     db.session.commit()
 
@@ -803,8 +839,21 @@ def manage_users():
         else:
             return "Username and password required", 400
 
-    users = User.query.all()
+    users = User.query.order_by(User.username).all()  # Sort users alphabetically by username
     return render_template('manage_users.html', users=users)
+
+
+@app.route('/admin/user_suggestions')
+@admin_required
+def user_suggestions():
+    query = request.args.get('q', '').strip()
+    if not query:
+        return jsonify([])
+
+    matched_users = User.query.filter(User.username.ilike(f'%{query}%')).limit(10).all()
+    usernames = [user.username for user in matched_users]
+    return jsonify(usernames)
+
 
 @app.route('/admin/users/delete/<int:user_id>', methods=['POST'])
 @admin_required

@@ -3,8 +3,6 @@
 <head>
   <meta charset="UTF-8" />
   <title>Manage Counters - Admin Dashboard</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
 </head>
@@ -31,7 +29,7 @@
           <input type="text" name="counter_name" placeholder="Counter Name" required class="form-control border border-info" />
         </div>
         <div class="col-md-5">
-          <input type="text" name="username" placeholder="Assign to Username" required class="form-control border border-warning" />
+  <input type="text" name="username" id="username-input" placeholder="Assign to Username" required class="form-control border border-warning" autocomplete="off"/>
         </div>
         <div class="col-md-2">
           <button type="submit" class="btn btn-primary w-100 px-4 fw-semibold">
@@ -78,5 +76,66 @@
   </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const input = document.getElementById('username-input');
+  let timeout = null;
+
+  input.addEventListener('input', function() {
+    clearTimeout(timeout);
+    
+    timeout = setTimeout(() => {
+      const query = input.value.trim();
+      if (query.length < 1) {
+        closeSuggestions();
+        return;
+      }
+
+      fetch(`/admin/user_suggestions?q=${encodeURIComponent(query)}`)
+        .then(response => response.json())
+        .then(data => {
+          showSuggestions(data);
+        });
+    }, 300);
+  });
+
+  function showSuggestions(usernames) {
+    closeSuggestions();
+    if (!usernames.length) return;
+
+    const list = document.createElement('ul');
+    list.className = 'list-group position-absolute';
+    list.style.zIndex = 1050;
+    list.style.width = input.offsetWidth + 'px';
+
+    usernames.forEach(name => {
+      const item = document.createElement('li');
+      item.className = 'list-group-item list-group-item-action';
+      item.textContent = name;
+      item.style.cursor = 'pointer';
+
+      item.addEventListener('click', () => {
+        input.value = name;
+        closeSuggestions();
+      });
+
+      list.appendChild(item);
+    });
+
+    input.parentNode.style.position = 'relative';
+    input.parentNode.appendChild(list);
+  }
+
+  function closeSuggestions() {
+    const oldList = document.querySelector('#username-input + ul.list-group');
+    if (oldList) oldList.remove();
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!input.contains(e.target)) closeSuggestions();
+  });
+});
+</script>
+
 </body>
 </html>
