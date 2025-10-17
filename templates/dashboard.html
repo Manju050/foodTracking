@@ -22,6 +22,16 @@
 {% else %}
 
 <body>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
   <div class="container my-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
       <h1 class="text-success mb-0">My Counter Dashboard</h1>

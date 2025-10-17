@@ -7,6 +7,7 @@ from io import StringIO
 import csv
 from datetime import datetime
 from io import BytesIO
+import re
 
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
@@ -81,13 +82,17 @@ class Counter(db.Model):
 class GlobalStats(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     total_devotees_taken = db.Column(db.Integer, default=0)
+    session_id = db.Column(db.Integer, db.ForeignKey('initial_prepared_session.id'), nullable=True)
 
+
+from datetime import datetime
 
 class FeedingSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    data = db.Column(db.Text, nullable=False)  # CSV string storing session data
-
+    filename = db.Column(db.String(1000), nullable=False)
+    data = db.Column(db.Text, nullable=False)
+    session_id = db.Column(db.Integer, db.ForeignKey('initial_prepared_session.id'), nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)  # add this if missing
 
 # Decorators
 def login_required(f):
@@ -334,15 +339,28 @@ def initial_prepared():
 @admin_required
 def update_total_devotees():
     total = request.form.get('total_devotees', '0')
-    if total.isdigit():
-        total_int = int(total)
-        stats = GlobalStats.query.first()
-        if not stats:
-            stats = GlobalStats(total_devotees_taken=total_int)
-            db.session.add(stats)
-        else:
-            stats.total_devotees_taken = total_int
-        db.session.commit()
+    if not total.isdigit():
+        return redirect(url_for('admin_dashboard'))
+
+    total_int = int(total)
+
+    # Find the currently active session
+    active_session = InitialPreparedSession.query.filter_by(is_active=True).first()
+    if not active_session:
+        # No session active — cannot update global stats
+        flash("No active session found. Activate a session first.", "warning")
+        return redirect(url_for('admin_dashboard'))
+
+    # Get or create GlobalStats for this session only
+    stats = GlobalStats.query.filter_by(session_id=active_session.id).first()
+    if not stats:
+        stats = GlobalStats(session_id=active_session.id, total_devotees_taken=total_int)
+        db.session.add(stats)
+    else:
+        stats.total_devotees_taken = total_int
+
+    db.session.commit()
+    flash(f"Updated total devotees taken for session '{active_session.session_name}' to {total_int}.", "success")
     return redirect(url_for('admin_dashboard'))
 
 
@@ -395,6 +413,8 @@ def admin_dashboard():
     stock_map = {}
 
     if active_session:
+        stats = GlobalStats.query.filter_by(session_id=active_session.id).first()
+        total_devotees_taken = stats.total_devotees_taken if stats else 0
         # Aggregate only available_stock by item_name for the session
         stock_agg = db.session.query(
             CounterItemStock.item_name,
@@ -407,8 +427,9 @@ def admin_dashboard():
 
         stock_map = {name: total for name, total in stock_agg}
 
-    stats = GlobalStats.query.first()
-    total_devotees_taken = stats.total_devotees_taken if stats else 0
+    else:
+        total_devotees_taken = 0
+
     count = total_devotees_taken
 
     items_list = []
@@ -471,7 +492,7 @@ def admin_api_data():
     # Get session items for total_prepared and senior_taken values
     session_items = InitialPreparedItem.query.filter_by(session_id=active_session.id).all()
 
-    stats = GlobalStats.query.first()
+    stats = GlobalStats.query.filter_by(session_id=active_session.id).first()
     total_devotees_taken = stats.total_devotees_taken if stats else 0
     count = total_devotees_taken
 
@@ -536,96 +557,81 @@ def manage_items():
 @app.route('/admin/save_snapshot', methods=['POST'])
 @admin_required
 def save_snapshot():
+    # Get the currently active session
     active_session = InitialPreparedSession.query.filter_by(is_active=True).first()
     if not active_session:
-        # No active session, redirect or show error
+        flash("No active session found. Please activate a session first.", "warning")
         return redirect(url_for('admin_dashboard'))
 
-    output = StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['Item Name', 'Total Prepared', 'Senior Taken', 'Available Stock', 
-                     'Consumed (T-S-x)', 'Devotees Taken (Count)', 'Estimated Available for Serving'])
-
-    # Aggregate per item_name from CounterItemStock in active_session
+    # Aggregate total_prepared, available_stock grouped by item_name
     from sqlalchemy import func
 
+    # Sum total_prepared from InitialPreparedItem to get session totals per item
+    prepared_agg = db.session.query(
+        InitialPreparedItem.name,
+        func.coalesce(func.sum(InitialPreparedItem.total_prepared), 0)
+    ).filter(
+        InitialPreparedItem.session_id == active_session.id
+    ).group_by(
+        InitialPreparedItem.name
+    ).all()
+    prepared_map = {name: total for name, total in prepared_agg}
+
+    # Sum available_stock from CounterItemStock per item for this session
     stock_agg = db.session.query(
         CounterItemStock.item_name,
-        func.coalesce(func.sum(CounterItemStock.total_prepared), 0),
-        func.coalesce(func.sum(CounterItemStock.available_stock), 0),
-        func.coalesce(func.sum(CounterItemStock.consumed_quantity), 0)
+        func.coalesce(func.sum(CounterItemStock.available_stock), 0)
     ).filter(
         CounterItemStock.session_id == active_session.id
     ).group_by(
         CounterItemStock.item_name
     ).all()
+    stock_map = {name: total for name, total in stock_agg}
 
-    stats = GlobalStats.query.first()
+    # Fetch current session total devotees taken from GlobalStats
+    stats = GlobalStats.query.filter_by(session_id=active_session.id).first()
     total_devotees_taken = stats.total_devotees_taken if stats else 0
 
-    for item_name, total_prepared, available_stock, consumed_quantity in stock_agg:
-        S = 0  # senior_taken if tracked per session or zero
-        T = total_prepared
-        x = available_stock
-        count = consumed_quantity
 
-        consumed_calc = max(T - S - x, 0)
+    # Generate safe filename
+    def sanitize_filename(s):
+        return re.sub(r'[^a-zA-Z0-9-_]', '_', s)
+    import datetime
+
+
+    timestamp = datetime.datetime.now()
+    safe_session_name = sanitize_filename(active_session.session_name or "session")
+    filename = f"{safe_session_name}_{total_devotees_taken}_prasadam_count_{timestamp}.csv"
+
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        'Item Name', 'Total Prepared (T)', 'Senior Taken (S)', 'Available Stock (x)', 
+        'Consumed (T - S - x)', 'Total Devotees Taken Prasadam', 'Estimated Available for Serving'
+    ])
+
+    # Use all item names encountered in either prepared or stock data
+    all_items = set(prepared_map.keys()).union(stock_map.keys())
+
+    for name in all_items:
+        T = prepared_map.get(name, 0)
+        S = 0  # Adjust if you track senior_taken per session/item elsewhere
+        x = stock_map.get(name, 0)
+
+        consumed = max(T - S - x, 0)
+
         denominator = max(T - S - x, 1)
-        estimated_available = int(x * count / denominator) if denominator and count else x
+        est_available = int(x * total_devotees_taken / denominator) if denominator > 0 and total_devotees_taken > 0 else x
 
-        writer.writerow([item_name, T, S, x, consumed_calc, count, estimated_available])
+        writer.writerow([name, T, S, x, consumed, total_devotees_taken, est_available])
 
-    data_str = output.getvalue()
-    snapshot = FeedingSession(data=data_str)
+    # Save feeding session snapshot in DB linked to current session
+    snapshot = FeedingSession(data=output.getvalue(), session_id=active_session.id,filename=filename,timestamp=timestamp)
     db.session.add(snapshot)
     db.session.commit()
 
+    flash(f"Snapshot saved for session '{active_session.session_name}'.", "success")
     return redirect(url_for('previous_sessions'))
-
-@app.route('/admin/feeding_session_done', methods=['POST'])
-@admin_required
-def feeding_session_done():
-    items = Item.query.all()
-    output = StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['Item Name', 'Total Prepared', 'Senior Taken', 'Available Stock', 'Consumed', 'Manual Consumed', 'Can Take'])
-
-    items_dict = {}
-    for item in items:
-        key = item.name
-        entry = items_dict.get(key)
-        if not entry:
-            entry = {
-                "name": key,
-                "available_stock": 0,
-                "consumed_quantity": 0,
-                "total_prepared": 0,
-                "senior_taken": 0,
-            }
-            items_dict[key] = entry
-        entry["available_stock"] += item.available_stock or 0
-        entry["consumed_quantity"] += item.consumed_quantity or 0
-        if item.total_prepared:
-            entry["total_prepared"] = item.total_prepared
-        if item.senior_taken:
-            entry["senior_taken"] = item.senior_taken
-
-    for itm in items_dict.values():
-        T = itm["total_prepared"]
-        S = itm["senior_taken"]
-        x = itm["available_stock"]
-        consumed_calc = max(T - S - x, 0)
-        denominator = max(T - S, 1)
-        consumption_rate = consumed_calc / denominator if denominator else 0
-        possible_take = int(x * consumption_rate) if consumption_rate > 0 else x
-        writer.writerow([itm["name"], T, S, x, consumed_calc, itm["consumed_quantity"], possible_take])
-
-    data_str = output.getvalue()
-    session_record = FeedingSession(data=data_str)
-    db.session.add(session_record)
-    db.session.commit()
-    return redirect(url_for('previous_sessions'))
-
 
 @app.route('/admin/previous_sessions')
 @admin_required
@@ -640,12 +646,18 @@ def download_feeding_session(session_id):
     session_record = FeedingSession.query.get_or_404(session_id)
     csv_data = session_record.data
     csv_bytes = csv_data.encode('utf-8')
+
+    # Use stored filename if available, else fallback to timestamp-based name
+    filename = session_record.filename
+    if not filename:
+        filename = f'feeding_session_{session_record.timestamp.strftime("%Y%m%d_%H%M%S")}.csv'
+
     return send_file(
         BytesIO(csv_bytes),
         mimetype='text/csv',
         as_attachment=True,
-        download_name=f'feeding_session_{session_record.timestamp.strftime("%Y%m%d_%H%M%S")}.csv'
-)
+        download_name=filename
+    )
 
 @app.route('/select_session', methods=['GET', 'POST'])
 @login_required
@@ -805,11 +817,12 @@ def delete_user(user_id):
     db.session.commit()
     return redirect(url_for('manage_users'))
 
-@app.route('/logout')
+@app.route('/logout', methods=['GET', 'POST'])
 def logout():
     session.pop('user_id', None)
     session.pop('is_admin', None)
     return redirect(url_for('login'))
+
 
 def sync_initial_items_to_counters():
     # Get latest initial prepared session
