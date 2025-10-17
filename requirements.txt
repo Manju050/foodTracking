@@ -9,6 +9,7 @@ Jinja2==3.1.6
 MarkupSafe==3.0.3
 packaging==25.0
 psycopg2-binary==2.9.7
+pytz==2023.3
 SQLAlchemy==2.0.44
 typing_extensions==4.15.0
 Werkzeug==2.3.7
