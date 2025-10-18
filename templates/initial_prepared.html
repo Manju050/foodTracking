@@ -106,7 +106,7 @@
       row.className = 'input-group mb-2';
       row.innerHTML = `
         <input type="text" name="item_name" placeholder="Item Name" class="form-control" required />
-        <input type="number" name="total_prepared" min="0" placeholder="Total Prepared" class="form-control" required />
+        <input type="number" name="total_output" min="0" placeholder="Total Prepared" class="form-control" required />
         <button type="button" class="btn btn-danger" onclick="this.parentNode.remove()">
           <i class="bi bi-x-circle"></i>
         </button>`;
@@ -128,7 +128,7 @@
     {% endwith %}
   <div class="container my-5">
     <h2 class="text-primary fw-bold mb-4" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">
-      <i class="bi bi-journal-plus me-2"></i>Initial Prepared Session Setup
+      <i class="bi bi-journal-plus me-2"></i> Manage Sessions
     </h2>
   <div style="position: absolute; top: 1rem; right: 1rem; z-index: 1050;">
     <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-primary">

@@ -9,6 +9,7 @@ from datetime import datetime
 from io import BytesIO
 import re
 import pytz
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
@@ -26,7 +27,7 @@ class InitialPreparedSession(db.Model):
     session_name = db.Column(db.String(100), nullable=False, unique=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=False)
-
+    total_expected_devotees_count = db.Column(db.Integer, nullable=True)
     # Relationship with cascade delete-orphan
     items = db.relationship(
         'InitialPreparedItem',
@@ -39,7 +40,8 @@ class InitialPreparedItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey('initial_prepared_session.id'), nullable=False)
     name = db.Column(db.String(100), nullable=False)
-    total_prepared = db.Column(db.Integer, nullable=False)
+    total_expected = db.Column(db.Integer, nullable=True)
+    total_output = db.Column(db.Integer, nullable=True)
 
 class CounterItemStock(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -56,7 +58,6 @@ class CounterItemStock(db.Model):
     )
 
 
-from werkzeug.security import generate_password_hash, check_password_hash
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -84,9 +85,9 @@ class GlobalStats(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     total_devotees_taken = db.Column(db.Integer, default=0)
     session_id = db.Column(db.Integer, db.ForeignKey('initial_prepared_session.id'), nullable=True)
+    
 
-
-class FeedingSession(db.Model):
+class PreviousSavedSessions(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(1000), nullable=False)
     data = db.Column(db.Text, nullable=False)
@@ -138,7 +139,7 @@ def sync_session_items_to_counters(session_id):
                 )
                 db.session.add(new_stock)
 
-        # Update total_prepared for existing counter items matching session items
+        # Update total_output for existing counter items matching session items
         for c_item in existing_counter_items:
             session_item = next((i for i in session.items if i.name == c_item.item_name), None)
             if session_item:
@@ -311,7 +312,7 @@ def initial_prepared():
     if request.method == 'POST':
         session_name = request.form.get('session_name', '').strip()
         item_names = request.form.getlist('item_name')
-        total_prepareds = request.form.getlist('total_prepared')
+        total_prepareds = request.form.getlist('total_output')
         senior_taken_list = request.form.getlist('senior_taken')
 
         if not session_name:
@@ -342,7 +343,7 @@ def initial_prepared():
                 ip_item = InitialPreparedItem(
                     session_id=new_session.id,
                     name=name.strip(),
-                    total_prepared=int(total),
+                    total_output=int(total),
                 )
                 db.session.add(ip_item)
 
@@ -408,7 +409,7 @@ def update_available(item_id):
 @admin_required
 def admin_dashboard():
     if request.method == 'POST':
-        total_prepared_inputs = request.form.getlist('total_prepared')
+        total_prepared_inputs = request.form.getlist('total_output')
         senior_taken_inputs = request.form.getlist('senior_taken')
         item_names = request.form.getlist('item_name_hidden')
 
@@ -417,7 +418,7 @@ def admin_dashboard():
             T = int(total_prepared_inputs[idx]) if total_prepared_inputs[idx].isdigit() else 0
             S = int(senior_taken_inputs[idx]) if senior_taken_inputs[idx].isdigit() else 0
             for ip_item in ip_items:
-                ip_item.total_prepared = T
+                ip_item.total_output = T
                 # You may extend InitialPreparedItem to store senior_taken if needed
             db.session.commit()
         return redirect(url_for('admin_dashboard'))
@@ -460,12 +461,12 @@ def admin_dashboard():
 
     for ip_item in session_items:
         name = ip_item.name
-        T = ip_item.total_prepared
+        T = ip_item.total_output
         S = 0  # senior_taken is zero by default; extend if tracked
 
         x = stock_map.get(name, 0)
 
-        # Calculate consumed as total_prepared - available_stock - senior_taken
+        # Calculate consumed as total_output - available_stock - senior_taken
         consumed_calc = max(T - S - x, 0)
 
         denominator = T - S - x
@@ -476,7 +477,7 @@ def admin_dashboard():
 
         items_list.append({
             "name": name,
-            "total_prepared": T,
+            "total_output": T,
             "senior_taken": S,
             "available_stock": x,
             "count": count,
@@ -513,7 +514,7 @@ def admin_api_data():
 
     stock_sum_map = {name: total for name, total in stock_sums}
 
-    # Get session items for total_prepared and senior_taken values
+    # Get session items for total_output and senior_taken values
     session_items = InitialPreparedItem.query.filter_by(session_id=active_session.id).all()
 
     stats = GlobalStats.query.filter_by(session_id=active_session.id).first()
@@ -523,7 +524,7 @@ def admin_api_data():
     items_list = []
     for ip_item in session_items:
         name = ip_item.name
-        T = ip_item.total_prepared
+        T = ip_item.total_output
         S = 0  # Modify if you track senior_taken per session item, else keep 0
         x = stock_sum_map.get(name, 0)
         denominator = T - S - x
@@ -537,7 +538,7 @@ def admin_api_data():
 
         items_list.append({
             "name": name,
-            "total_prepared": T,
+            "total_output": T,
             "senior_taken": S,
             "available_stock": x,
             "estimated_available": estimated_available,
@@ -555,7 +556,7 @@ def admin_api_data():
 def manage_items():
     if request.method == 'POST':
         name = request.form['item_name'].strip()
-        total = request.form['total_prepared']
+        total = request.form['total_output']
         if name and total.isdigit():
             # Add or update global item totals here
             items = Item.query.filter_by(name=name).all()
@@ -565,7 +566,7 @@ def manage_items():
                 pass
             else:
                 for item in items:
-                    item.total_prepared = int(total)
+                    item.total_output = int(total)
             db.session.commit()
             return redirect(url_for('manage_items'))
 
@@ -574,7 +575,7 @@ def manage_items():
     items_dict = {}
     for i in items_all:
         if i.name not in items_dict:
-            items_dict[i.name] = i.total_prepared
+            items_dict[i.name] = i.total_output
 
     return render_template('manage_items.html', items=items_dict)
 
@@ -587,13 +588,13 @@ def save_snapshot():
         flash("No active session found. Please activate a session first.", "warning")
         return redirect(url_for('admin_dashboard'))
 
-    # Aggregate total_prepared, available_stock grouped by item_name
+    # Aggregate total_output, available_stock grouped by item_name
     from sqlalchemy import func
 
-    # Sum total_prepared from InitialPreparedItem to get session totals per item
+    # Sum total_output from InitialPreparedItem to get session totals per item
     prepared_agg = db.session.query(
         InitialPreparedItem.name,
-        func.coalesce(func.sum(InitialPreparedItem.total_prepared), 0)
+        func.coalesce(func.sum(InitialPreparedItem.total_output), 0)
     ).filter(
         InitialPreparedItem.session_id == active_session.id
     ).group_by(
@@ -662,7 +663,7 @@ def save_snapshot():
         writer.writerow([name, T, S, x, consumed, total_devotees_taken, est_available])
 
     # Save feeding session snapshot in DB linked to current session
-    snapshot = FeedingSession(data=output.getvalue(), session_id=active_session.id,filename=filename,timestamp=timestamp_str)
+    snapshot = PreviousSavedSessions(data=output.getvalue(), session_id=active_session.id,filename=filename,timestamp=timestamp_str)
     db.session.add(snapshot)
     db.session.commit()
 
@@ -672,14 +673,14 @@ def save_snapshot():
 @app.route('/admin/previous_sessions')
 @admin_required
 def previous_sessions():
-    sessions = FeedingSession.query.order_by(FeedingSession.timestamp.desc()).all()
+    sessions = PreviousSavedSessions.query.order_by(PreviousSavedSessions.timestamp.desc()).all()
     return render_template('previous_sessions.html', sessions=sessions)
 
 
 @app.route('/admin/previous_sessions/download/<int:session_id>')
 @admin_required
 def download_feeding_session(session_id):
-    session_record = FeedingSession.query.get_or_404(session_id)
+    session_record = PreviousSavedSessions.query.get_or_404(session_id)
     csv_data = session_record.data
     csv_bytes = csv_data.encode('utf-8')
 
@@ -715,7 +716,7 @@ def manage_session_items(session_id):
     if request.method == 'POST':
         submitted_ids = request.form.getlist('item_id')
         item_names = request.form.getlist('item_name')
-        total_prepareds = request.form.getlist('total_prepared')
+        total_prepareds = request.form.getlist('total_output')
 
         # Fetch existing items from DB
         existing_items = InitialPreparedItem.query.filter_by(session_id=session.id).all()
@@ -739,10 +740,10 @@ def manage_session_items(session_id):
                 if item_id in existing_ids:
                     item = InitialPreparedItem.query.get(int(item_id))
                     item.name = name
-                    item.total_prepared = total
+                    item.total_output = total
             else:
                 # New item (empty or missing id)
-                item = InitialPreparedItem(session_id=session.id, name=name, total_prepared=total)
+                item = InitialPreparedItem(session_id=session.id, name=name, total_output=total)
                 db.session.add(item)
 
 

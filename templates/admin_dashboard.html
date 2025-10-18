@@ -226,9 +226,9 @@
                 </td>
                 <td class="text-center">
                   {% if item.locked_total %}
-                    <input type="number" class="form-control form-control-sm text-center" value="{{ item.total_prepared }}" readonly />
+                    <input type="number" class="form-control form-control-sm text-center" value="{{ item.total_output }}" readonly />
                   {% else %}
-                    <input type="number" min="0" name="total_prepared" value="{{ item.total_prepared }}" required class="form-control form-control-sm text-center" />
+                    <input type="number" min="0" name="total_output" value="{{ item.total_output }}" required class="form-control form-control-sm text-center" />
                   {% endif %}
                 </td>
                 <td class="text-center">
@@ -269,7 +269,7 @@ async function fetchAdminData() {
           <input type="hidden" name="item_name_hidden" value="${item.name}">
         </td>
         <td class="text-center">
-          <input type="number" class="form-control form-control-sm text-center" value="${item.total_prepared}" readonly />
+          <input type="number" class="form-control form-control-sm text-center" value="${item.total_output}" readonly />
         </td>
         <td class="text-center">
           <input type="number" min="0" name="senior_taken" value="${item.senior_taken}" class="form-control form-control-sm text-center" />
