@@ -65,8 +65,11 @@
 
             <td>
               <form method="post" action="{{ url_for('delete_user', user_id=user.id) }}" onsubmit="return confirm('Delete user {{user.username}}?');" style="display:inline;">
-                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                  <button type="submit" class="btn btn-sm btn-danger">
+                    <i class="bi bi-trash"></i> Delete   </button>
+
               </form>
+              
             </td>
           </tr>
           {% endfor %}

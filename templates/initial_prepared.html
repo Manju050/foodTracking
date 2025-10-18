@@ -100,22 +100,42 @@
     }
   </style>
   <script>
-    function addItemRow() {
-      const container = document.getElementById('items-container');
-      const row = document.createElement('div');
-      row.className = 'input-group mb-2';
-      row.innerHTML = `
-        <input type="text" name="item_name" placeholder="Item Name" class="form-control" required />
-        <input type="number" name="total_output" min="0" placeholder="Total Prepared" class="form-control" required />
-        <button type="button" class="btn btn-danger" onclick="this.parentNode.remove()">
-          <i class="bi bi-x-circle"></i>
-        </button>`;
-      container.appendChild(row);
-    }
-    window.onload = () => addItemRow();
+function addItemRow() {
+  const tbody = document.getElementById('items-container');
+  const row = document.createElement('tr');
+
+  row.innerHTML = `
+    <td><input type="text" name="item_name" placeholder="Item Name" class="form-control" required /></td>
+    <td><input type="text" name="total_expected_to_prepare" placeholder="Total Expected to Prepare" class="form-control" required /></td>
+    <td><input type="number" name="total_output_received" min="0" placeholder="Total Output Received" class="form-control" required /></td>
+    <td><button type="button" class="btn btn-danger" onclick="this.closest('tr').remove()">
+      <i class="bi bi-x-circle"></i> Remove
+    </button></td>
+  `;
+  tbody.appendChild(row);
+}
+
+// Add first row on page load
+window.onload = () => addItemRow();
+
   </script>
 </head>
 <body>
+  <div class="modal fade" id="sessionDetailsModal" tabindex="-1" aria-labelledby="sessionDetailsLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="sessionDetailsLabel">Session Items</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="sessionDetailsBody">
+        <!-- Session items will be dynamically loaded here -->
+        <p>Loading session items...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
       {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -144,44 +164,58 @@
       </div>
     {% endif %}
 
-    <section class="mb-4">
-      <h4 class="mb-3"><i class="bi bi-list-task me-2"></i>Manage Existing Sessions</h4>
-      <ul class="list-group w-50">
-        {% for session in sessions %}
-          <li class="list-group-item d-flex justify-content-between align-items-center">
-            <div>
-              {% if active_session and session.id == active_session.id %}
-                <span class="active-session">{{ session.session_name }} ({{ session.created_at.strftime('%Y-%m-%d %H:%M') }})</span>
-              {% else %}
-                {{ session.session_name }} ({{ session.created_at.strftime('%Y-%m-%d %H:%M') }})
-              {% endif %}
-            </div>
-            <a href="{{ url_for('manage_session_items', session_id=session.id) }}" class="btn btn-sm btn-primary">
-              <i class="bi bi-pencil-square"></i> Manage Items
-            </a>
-          </li>
-        {% else %}
-          <li class="list-group-item">No sessions found. Please create some initial prepared sessions.</li>
-        {% endfor %}
-      </ul>
-    </section>
 
     <h2 class="text-left text-primary fw-bold my-4" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">
       <i class="bi bi-plus-circle me-2"></i>Create New Session    
     </h2>
-    <form method="post" autocomplete="off">
-      <div class="mb-3">
-        <label for="session_name" class="form-label">Session Name (e.g., Monday Breakfast)</label>
-        <input type="text" name="session_name" id="session_name" class="form-control" required />
-      </div>
-      <div id="items-container"></div>
-      <button type="button" class="btn btn-secondary mb-3" onclick="addItemRow()">
-        <i class="bi bi-plus-lg"></i> Add Item
-      </button><br/>
-      <button type="submit" class="btn btn-primary">
-        <i class="bi bi-save me-1"></i>Save Session
-      </button>
-    </form>
+
+
+
+
+
+
+
+<form method="post">
+  <div class="mb-3">
+    <label for="session_name" class="form-label">Enter Session Name</label>
+    <input type="text" name="session_name" id="session_name" class="form-control" required />
+  </div>
+
+  <div class="mb-3">
+    <label for="total_expected_devotees_count" class="form-label">Enter Total Expected Devotees Count</label>
+    <input type="number" name="total_expected_devotees_count" id="total_expected_devotees_count" class="form-control" required />
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Add Menu Items</label>
+  </div>
+
+  <table class="table" id="items-table">
+    <thead>
+      <tr>
+        <th>Item Name</th>
+        <th>Total Expected to Prepare</th>
+        <th>Total Output Received</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="items-container">
+      <!-- dynamic rows go here -->
+    </tbody>
+  </table>
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <button type="button" class="btn btn-secondary" onclick="addItemRow()">
+      <i class="bi bi-plus-circle me-1"></i> Add Item
+    </button>
+
+    <button type="submit" class="btn btn-primary">
+      <i class="bi bi-save me-1"></i> Save Items
+    </button>
+  </div>
+</form>
+
+
 
     <section class="mt-5">
 
@@ -195,31 +229,98 @@
               <th>Session Name</th>
               <th>Created At</th>
               <th>Status</th>
+              <th>Actions</th> <!-- new column -->
+
             </tr>
           </thead>
-          <tbody>
-            {% for session in sessions %}
-              <tr>
-                <td>{{ session.session_name }}</td>
-                <td>{{ session.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                <td>
-                  {% if session.is_active %}
-                    <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Active</span>
-                  {% else %}
-                    <span class="badge bg-secondary"><i class="bi bi-x-circle me-1"></i>Inactive</span>
-                  {% endif %}
-                </td>
-              </tr>
-            {% else %}
-              <tr>
-                <td colspan="3" class="text-center">No sessions found.</td>
-              </tr>
-            {% endfor %}
-          </tbody>
+<tbody>
+  {% for session in sessions %}
+    <tr onclick="showSessionDetails({{ session.id }})" style="cursor: pointer;">
+      <td>{{ session.session_name }}</td>
+      <td>{{ session.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td onclick="event.stopPropagation()">
+        {% if session.is_active %}
+          <form method="post" action="{{ url_for('deactivate_session', session_id=session.id) }}">
+            <button type="submit" class="btn btn-sm btn-danger" style="min-width: 92px;" 
+              onclick="return confirm('Are you sure you want to deactivate this session?');">
+              <i class="bi bi-x-circle me-1"></i> Deactivate
+            </button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('activate_session', session_id=session.id) }}">
+            <button type="submit" class="btn btn-sm btn-outline-primary" style="min-width: 92px;">
+              <i class="bi bi-check-circle me-1"></i> Activate
+            </button>
+          </form>
+        {% endif %}
+      </td>
+      <td onclick="event.stopPropagation()"> 
+        <a href="{{ url_for('manage_session_items', session_id=session.id) }}" class="btn btn-sm btn-primary">
+          <i class="bi bi-pencil-square me-1"></i> Edit
+        </a>
+      </td>
+    </tr>
+  {% else %}
+    <tr>
+      <td colspan="4" class="text-center">No sessions found.</td>
+    </tr>
+  {% endfor %}
+</tbody>
+
+
+
         </table>
       </div>
     </section>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  async function showSessionDetails(sessionId) {
+    const modal = new bootstrap.Modal(document.getElementById('sessionDetailsModal'));
+    const modalBody = document.getElementById('sessionDetailsBody');
+
+    // Show loading text
+    modalBody.innerHTML = '<p>Loading session items...</p>';
+    modal.show();
+
+    try {
+      const response = await fetch(`/admin/session_items/${sessionId}`);
+      if (!response.ok) throw new Error('Failed to load session items.');
+      const data = await response.json();
+    const { total_expected_devotees_count, items } = data;
+
+      if (items.length === 0) {
+        modalBody.innerHTML = '<p>No items found for this session.</p>';
+        return;
+      }
+          let html = `<p><strong>Total Expected Devotees Count:</strong> ${total_expected_devotees_count ?? 'N/A'}</p>`;
+
+
+      // Build HTML table with items
+      html += `<table class="table table-bordered">
+                    <thead>
+                      <tr>
+                        <th>Item Name</th>
+                        <th>Total Expected</th>
+                        <th>Total Output</th>
+                      </tr>
+                    </thead><tbody>`;
+
+      items.forEach(item => {
+        html += `<tr>
+                  <td>${item.name}</td>
+                  <td>${item.total_expected_to_prepare}</td>
+                  <td>${item.total_output_received}</td>
+                 </tr>`;
+      });
+      html += '</tbody></table>';
+
+      modalBody.innerHTML = html;
+    } catch (error) {
+      modalBody.innerHTML = `<p class="text-danger">${error.message}</p>`;
+    }
+  }
+</script>
+
 </body>
 </html>

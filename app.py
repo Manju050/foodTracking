@@ -10,6 +10,7 @@ from io import BytesIO
 import re
 import pytz
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask import Flask, render_template, request, redirect, url_for, flash
 
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
@@ -40,17 +41,18 @@ class InitialPreparedItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey('initial_prepared_session.id'), nullable=False)
     name = db.Column(db.String(100), nullable=False)
-    total_expected = db.Column(db.Integer, nullable=True)
-    total_output = db.Column(db.Integer, nullable=True)
+    total_expected_to_prepare = db.Column(db.Integer, nullable=True)
+    total_output_received = db.Column(db.Integer, nullable=True)
 
 class CounterItemStock(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     item_name = db.Column(db.String(100), nullable=False)
 
-    counter_id = db.Column(db.Integer, db.ForeignKey('counter.id'), nullable=False)
+    counter_id = db.Column(db.Integer, db.ForeignKey('counter.id', ondelete='CASCADE'), nullable=False)
     session_id = db.Column(db.Integer, db.ForeignKey('initial_prepared_session.id'), nullable=False)
     available_stock = db.Column(db.Integer, default=0)
-    counter = db.relationship('Counter', backref='counter_item_stocks')
+
+    counter = db.relationship('Counter', backref=db.backref('counter_item_stocks', cascade='all, delete-orphan'))
     session = db.relationship('InitialPreparedSession', backref='counter_item_stocks')
 
     __table_args__ = (
@@ -139,7 +141,7 @@ def sync_session_items_to_counters(session_id):
                 )
                 db.session.add(new_stock)
 
-        # Update total_output for existing counter items matching session items
+        # Update total_output_received for existing counter items matching session items
         for c_item in existing_counter_items:
             session_item = next((i for i in session.items if i.name == c_item.item_name), None)
             if session_item:
@@ -297,12 +299,17 @@ def home():
 @admin_required
 def delete_session(session_id):
     session_obj = InitialPreparedSession.query.get_or_404(session_id)
-    
-    # This cascades delete to InitialPreparedItem if cascade is set on relationship
+
+    # Delete all counter_item_stock entries associated with this session
+    db.session.query(CounterItemStock).filter(CounterItemStock.session_id == session_obj.id).delete(synchronize_session=False)
+
+    # If you also want to delete InitialPreparedItem(s) linked to session, cascade should handle it, else delete explicitly.
+
+    # Now delete the session itself
     db.session.delete(session_obj)
     db.session.commit()
-    
-    flash(f'Session "{session_obj.session_name}" and all its items were deleted.', 'success')
+
+    flash(f'Session "{session_obj.session_name}" and all related items were deleted.', 'success')
     return redirect(url_for('initial_prepared'))
 
 
@@ -311,9 +318,10 @@ def delete_session(session_id):
 def initial_prepared():
     if request.method == 'POST':
         session_name = request.form.get('session_name', '').strip()
+        total_expected_devotees_count = request.form.get('total_expected_devotees_count', '').strip()
         item_names = request.form.getlist('item_name')
-        total_prepareds = request.form.getlist('total_output')
-        senior_taken_list = request.form.getlist('senior_taken')
+        toal_expecteds = request.form.getlist('total_expected_to_prepare')
+        total_outputs = request.form.getlist('total_output_received')
 
         if not session_name:
             return "Session name is required", 400
@@ -333,17 +341,18 @@ def initial_prepared():
         # Format timestamp for filename (safe format without spaces/colons)
         timestamp_str = ist_now.strftime("%Y-%m-%d_%H:%M:%S")
         # Create session
-        new_session = InitialPreparedSession(session_name=session_name,created_at=timestamp_str)
+        new_session = InitialPreparedSession(session_name=session_name,created_at=timestamp_str,total_expected_devotees_count=int(total_expected_devotees_count) if total_expected_devotees_count.isdigit() else None)
         db.session.add(new_session)
         db.session.flush()  # to get new_session.id
 
         # Add items
-        for name, total in zip(item_names, total_prepareds):
-            if name.strip() and total.isdigit():
+        for name, total_expcted ,total_otp in zip(item_names, toal_expecteds,total_outputs):
+            if name.strip() and total_otp.isdigit() and total_expcted.isdigit():
                 ip_item = InitialPreparedItem(
                     session_id=new_session.id,
                     name=name.strip(),
-                    total_output=int(total),
+                    total_expected_to_prepare=int(total_expcted),
+                    total_output_received=int(total_otp)
                 )
                 db.session.add(ip_item)
 
@@ -409,7 +418,7 @@ def update_available(item_id):
 @admin_required
 def admin_dashboard():
     if request.method == 'POST':
-        total_prepared_inputs = request.form.getlist('total_output')
+        total_prepared_inputs = request.form.getlist('total_output_received')
         senior_taken_inputs = request.form.getlist('senior_taken')
         item_names = request.form.getlist('item_name_hidden')
 
@@ -418,13 +427,10 @@ def admin_dashboard():
             T = int(total_prepared_inputs[idx]) if total_prepared_inputs[idx].isdigit() else 0
             S = int(senior_taken_inputs[idx]) if senior_taken_inputs[idx].isdigit() else 0
             for ip_item in ip_items:
-                ip_item.total_output = T
+                ip_item.total_output_received = T
                 # You may extend InitialPreparedItem to store senior_taken if needed
             db.session.commit()
         return redirect(url_for('admin_dashboard'))
-
-    counters = Counter.query.all()
-    users = User.query.filter_by(is_admin=False).all()
 
     active_session = InitialPreparedSession.query.filter_by(is_active=True).first()
     if active_session:
@@ -461,12 +467,12 @@ def admin_dashboard():
 
     for ip_item in session_items:
         name = ip_item.name
-        T = ip_item.total_output
+        T = ip_item.total_output_received
         S = 0  # senior_taken is zero by default; extend if tracked
 
         x = stock_map.get(name, 0)
 
-        # Calculate consumed as total_output - available_stock - senior_taken
+        # Calculate consumed as total_output_received - available_stock - senior_taken
         consumed_calc = max(T - S - x, 0)
 
         denominator = T - S - x
@@ -477,7 +483,7 @@ def admin_dashboard():
 
         items_list.append({
             "name": name,
-            "total_output": T,
+            "total_output_received": T,
             "senior_taken": S,
             "available_stock": x,
             "count": count,
@@ -489,8 +495,7 @@ def admin_dashboard():
 
     sessions = InitialPreparedSession.query.order_by(InitialPreparedSession.created_at.desc()).all()
 
-    return render_template('admin_dashboard.html', counters=counters, users=users,
-                           items=items_list, initial_session=active_session, sessions=sessions)
+    return render_template('admin_dashboard.html',items=items_list, initial_session=active_session, sessions=sessions)
 
 
 from sqlalchemy import func
@@ -514,40 +519,50 @@ def admin_api_data():
 
     stock_sum_map = {name: total for name, total in stock_sums}
 
-    # Get session items for total_output and senior_taken values
+    # Get session items for total_output_received and senior_taken values
     session_items = InitialPreparedItem.query.filter_by(session_id=active_session.id).all()
 
     stats = GlobalStats.query.filter_by(session_id=active_session.id).first()
+    total_expected_devotees_count = active_session.total_expected_devotees_count if active_session.total_expected_devotees_count else 0
     total_devotees_taken = stats.total_devotees_taken if stats else 0
-    count = total_devotees_taken
+    remaining_devotees_to_honour_prasadam = total_expected_devotees_count - total_devotees_taken
 
     items_list = []
     for ip_item in session_items:
         name = ip_item.name
-        T = ip_item.total_output
+        T = ip_item.total_output_received
         S = 0  # Modify if you track senior_taken per session item, else keep 0
         x = stock_sum_map.get(name, 0)
         denominator = T - S - x
         consumed_calc = max(denominator, 0)
         print(f"{name}: T={T}, S={S}, x={x}, consumed={max(T - S - x, 0)}")
 
-        if denominator > 0 and count > 0:
-            estimated_available = int(x * count / denominator)
+        if denominator > 0 and total_devotees_taken > 0:
+            estimated_available = int(x * total_devotees_taken / denominator)
         else:
             estimated_available = 0
 
+        warning = False
+        if remaining_devotees_to_honour_prasadam > estimated_available:
+            warning = True
+        
         items_list.append({
             "name": name,
-            "total_output": T,
+            "total_output_received": T,
             "senior_taken": S,
             "available_stock": x,
             "estimated_available": estimated_available,
-            "consumed": consumed_calc
+            "consumed": consumed_calc,
+            "warning": warning
+
         })
 
     return jsonify({
         "items": items_list,
-        "total_devotees_taken": total_devotees_taken
+
+        "total_devotees_taken": total_devotees_taken,
+        "remaining_devotees_to_honour_prasadam": remaining_devotees_to_honour_prasadam,
+        "total_expected_devotees_count":total_expected_devotees_count
     })
 
 
@@ -556,7 +571,7 @@ def admin_api_data():
 def manage_items():
     if request.method == 'POST':
         name = request.form['item_name'].strip()
-        total = request.form['total_output']
+        total = request.form['total_output_received']
         if name and total.isdigit():
             # Add or update global item totals here
             items = Item.query.filter_by(name=name).all()
@@ -566,7 +581,7 @@ def manage_items():
                 pass
             else:
                 for item in items:
-                    item.total_output = int(total)
+                    item.total_output_received = int(total)
             db.session.commit()
             return redirect(url_for('manage_items'))
 
@@ -575,7 +590,7 @@ def manage_items():
     items_dict = {}
     for i in items_all:
         if i.name not in items_dict:
-            items_dict[i.name] = i.total_output
+            items_dict[i.name] = i.total_output_received
 
     return render_template('manage_items.html', items=items_dict)
 
@@ -588,13 +603,13 @@ def save_snapshot():
         flash("No active session found. Please activate a session first.", "warning")
         return redirect(url_for('admin_dashboard'))
 
-    # Aggregate total_output, available_stock grouped by item_name
+    # Aggregate total_output_received, available_stock grouped by item_name
     from sqlalchemy import func
 
-    # Sum total_output from InitialPreparedItem to get session totals per item
+    # Sum total_output_received from InitialPreparedItem to get session totals per item
     prepared_agg = db.session.query(
         InitialPreparedItem.name,
-        func.coalesce(func.sum(InitialPreparedItem.total_output), 0)
+        func.coalesce(func.sum(InitialPreparedItem.total_output_received), 0)
     ).filter(
         InitialPreparedItem.session_id == active_session.id
     ).group_by(
@@ -716,7 +731,13 @@ def manage_session_items(session_id):
     if request.method == 'POST':
         submitted_ids = request.form.getlist('item_id')
         item_names = request.form.getlist('item_name')
-        total_prepareds = request.form.getlist('total_output')
+        total_expected_to_prepares = request.form.getlist('total_expected_to_prepare')
+        total_output_receiveds = request.form.getlist('total_output_received')
+        total_expected_devotees_count = request.form.get('total_expected_devotees_count', '').strip()
+        
+        # Update total_expected_devotees_count on the session if valid
+        if total_expected_devotees_count.isdigit():
+            session.total_expected_devotees_count = int(total_expected_devotees_count)
 
         # Fetch existing items from DB
         existing_items = InitialPreparedItem.query.filter_by(session_id=session.id).all()
@@ -729,21 +750,24 @@ def manage_session_items(session_id):
 
         for idx, item_id in enumerate(submitted_ids):
             name = item_names[idx].strip()
-            total = total_prepareds[idx].strip()
-        
-            if not name or not total.isdigit():
+
+            total_otp = total_output_receiveds[idx].strip()
+            total_exp_otp = total_expected_to_prepares[idx].strip()
+            if not name or not total_otp.isdigit() or not total_exp_otp.isdigit():
                 continue
             
-            total = int(total)
+            total_otp = int(total_otp)
+            total_exp_otp = int(total_exp_otp)
         
             if item_id:  # existing item, update it
                 if item_id in existing_ids:
                     item = InitialPreparedItem.query.get(int(item_id))
+                    item.total_expected_to_prepare = total_exp_otp
                     item.name = name
-                    item.total_output = total
+                    item.total_output_received = total_otp
             else:
                 # New item (empty or missing id)
-                item = InitialPreparedItem(session_id=session.id, name=name, total_output=total)
+                item = InitialPreparedItem(session_id=session.id, name=name,total_expected_to_prepare=total_exp_otp, total_output_received=total_otp)
                 db.session.add(item)
 
 
@@ -754,6 +778,28 @@ def manage_session_items(session_id):
     # GET: provide session items to template
     items = InitialPreparedItem.query.filter_by(session_id=session.id).all()
     return render_template('manage_session_items.html', session=session, items=items)
+
+
+
+@app.route('/admin/session_items/<int:session_id>', methods=['GET'])
+@admin_required
+def session_items(session_id):
+    session = InitialPreparedSession.query.get_or_404(session_id)  # Get session
+
+    items = InitialPreparedItem.query.filter_by(session_id=session_id).all()
+
+    items_data = [{
+        'name': item.name,
+        'total_expected_to_prepare': getattr(item, 'total_expected_to_prepare', None),
+        'total_output_received': getattr(item, 'total_output_received', None)
+    } for item in items]
+
+    response = {
+        'total_expected_devotees_count': session.total_expected_devotees_count,
+        'items': items_data
+    }
+
+    return jsonify(response)
 
 @app.route('/admin/delete_session_item/<int:item_id>', methods=['POST'])
 @admin_required
@@ -770,7 +816,45 @@ def delete_session_item(item_id):
 def admin_sync_items():
     sync_initial_items_to_counters()
     return redirect(url_for('admin_dashboard'))
-from flask import flash
+
+
+@app.route('/admin/counter_items/<int:counter_id>', methods=['GET'])
+@admin_required
+def get_counter_items(counter_id):
+    items = CounterItemStock.query.filter_by(counter_id=counter_id).join(
+        InitialPreparedSession, CounterItemStock.session_id == InitialPreparedSession.id
+    ).add_columns(
+        CounterItemStock.item_name,
+        CounterItemStock.available_stock,
+        InitialPreparedSession.session_name
+    ).all()
+
+    items_list = [
+        {
+            'item_name': item_name,
+            'available_stock': available_stock,
+            'session_name': session_name
+        }
+        for _, item_name, available_stock, session_name in items
+    ]
+
+    return jsonify({'items': items_list})
+
+
+@app.route('/admin/delete_counter/<int:counter_id>', methods=['POST'])
+@admin_required
+def delete_counter(counter_id):
+    counter = Counter.query.get_or_404(counter_id)
+    
+    try:
+        db.session.delete(counter)
+        db.session.commit()
+        flash(f'Counter "{counter.name}" deleted successfully.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting counter: {str(e)}', 'danger')
+    
+    return redirect(url_for('manage_counters'))
 
 @app.route('/admin/manage_counters', methods=['GET', 'POST'])
 @admin_required

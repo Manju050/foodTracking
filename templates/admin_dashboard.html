@@ -127,7 +127,9 @@
     <!-- Main Content -->
     <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
 
-
+  <div class="header-section d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h3 text-primary mb-0">Admin Dashboard</h1>
+      </div>
       <div class="mb-4"></div>
       <form method="post" action="{{ url_for('save_snapshot') }}">
         <button type="submit" class="btn btn-danger mb-3">
@@ -136,32 +138,29 @@
       </form>
 
 <ul class="list-group mb-4">
-  {% for session in sessions %}
-  <li class="list-group-item d-flex justify-content-between align-items-center">
-    <div>
-      {{ session.session_name }} ({{ session.created_at.strftime('%Y-%m-%d %H:%M') }})
-    </div>
-    <div>
-      {% if session.is_active %}
-      <span class="badge bg-success me-2" style="font-size: 1rem; padding: 0.5em 1.9em;">Active</span>
-      <form method="post" action="{{ url_for('deactivate_session', session_id=session.id) }}" style="display: inline;">
-        <button type="submit" class="btn btn-sm btn-danger" style="font-size: 1rem; padding: 0.4em 1em;"
-        onclick="return confirm('Are you sure you want to deactivate this session?');">
-        Deactivate
-        </button>
-      </form>
-      {% else %}
-      <form method="post" action="{{ url_for('activate_session', session_id=session.id) }}" style="display: inline;">
-        <button type="submit" class="btn btn-sm btn-outline-primary" style="font-size: 1rem; padding: 0.4em 1em;">
-        Activate
-        </button>
-      </form>
-      {% endif %}
-    </div>
-  </li>
-  {% else %}
-  <li class="list-group-item">No sessions found.</li>
+ {% set active_sessions = sessions | selectattr('is_active') | list %}
+
+{% if active_sessions %}
+  {% for session in active_sessions %}
+    <li class="list-group-item d-flex justify-content-between align-items-center">
+      <div>
+        {{ session.session_name }} ({{ session.created_at.strftime('%Y-%m-%d %H:%M') }})
+      </div>
+      <div>
+        <span class="badge bg-success me-2" style="font-size: 1rem; padding: 0.5em 1.9em;">Active</span>
+        <form method="post" action="{{ url_for('deactivate_session', session_id=session.id) }}" style="display: inline;">
+          <button type="submit" class="btn btn-sm btn-danger" style="font-size: 1rem; padding: 0.4em 1em;"
+          onclick="return confirm('Are you sure you want to deactivate this session?');">
+          Deactivate
+          </button>
+        </form>
+      </div>
+    </li>
   {% endfor %}
+{% else %}
+  <li class="list-group-item">No active sessions found, Go to Sessions section and activate one.</li>
+{% endif %}
+
 </ul>
 
 
@@ -188,19 +187,38 @@
           </div>
           
         </div>
+        
         <div class="d-flex justify-content-end mb-3">
-  <div id="total-devotees-box" class="w-25">
-    <strong>Total Devotees Taken Prasadam</strong>
-    <div id="total-devotees-taken" class="fs-2 fw-bold">0</div>
-  </div>
-</div>
+          
+
+
+
+
+
+
+
+
+       </div>
       </form>
 
+<div class="d-flex">
+  <div id="total-devotees-box" class="w-25 me-3">
+    <strong>Total Devotees Count</strong>
+    <div id="total_expected_devotees_count" class="fs-2 fw-bold">0</div>
+  </div>
 
+  <div id="total-devotees-box" class="w-25 me-3">
+    <strong>Total Devotees Taken Prasadam</strong>
+    <div id="total_devotees_taken" class="fs-2 fw-bold">0</div>
+  </div>
 
-      <div class="header-section d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h3 text-primary mb-0">Admin Dashboard</h1>
-      </div>
+  <div id="total-devotees-box" class="w-25">
+    <strong>Remaining Devotees To Honour Prasadam</strong>
+    <div id="remaining_devotees_to_honour_prasadam" class="fs-2 fw-bold">0</div>
+  </div>
+</div>
+
+    
 
       
       <form method="post" action="{{ url_for('admin_dashboard') }}" class="mb-3">
@@ -215,6 +233,7 @@
                 <th class="text-center">Available at Counters (x)</th>
                 <th class="text-center">Total Consumed (C)</th>        <!-- New column -->
                 <th class="text-center">Estimated Available for Serving</th>
+
               </tr>
             </thead>
             <tbody>
@@ -224,11 +243,12 @@
                   <strong>{{ item.name }}</strong>
                   <input type="hidden" name="item_name_hidden" value="{{ item.name }}">
                 </td>
+
                 <td class="text-center">
                   {% if item.locked_total %}
-                    <input type="number" class="form-control form-control-sm text-center" value="{{ item.total_output }}" readonly />
+                    <input type="number" class="form-control form-control-sm text-center" value="{{ item.total_output_received }}" readonly />
                   {% else %}
-                    <input type="number" min="0" name="total_output" value="{{ item.total_output }}" required class="form-control form-control-sm text-center" />
+                    <input type="number" min="0" name="total_output_received" value="{{ item.total_output_received }}" required class="form-control form-control-sm text-center" />
                   {% endif %}
                 </td>
                 <td class="text-center">
@@ -256,20 +276,26 @@ async function fetchAdminData() {
     const response = await fetch('{{ url_for("admin_api_data") }}');
     const data = await response.json();
 
-    document.getElementById('total-devotees-taken').textContent = data.total_devotees_taken ?? '0';
+    document.getElementById('total_expected_devotees_count').textContent = data.total_expected_devotees_count ?? '0';
+    document.getElementById('total_devotees_taken').textContent = data.total_devotees_taken ?? '0';
+    document.getElementById('remaining_devotees_to_honour_prasadam').textContent = data.remaining_devotees_to_honour_prasadam ?? '0';
 
     const tbody = document.querySelector('#item-table tbody');
     tbody.innerHTML = '';  // Clear all rows
 
     data.items.forEach(item => {
-      const tr = document.createElement('tr');
+const tr = document.createElement('tr');
+if (item.warning) {
+  tr.classList.add('table-danger');
+}
+
       tr.innerHTML = `
         <td>
           <strong>${item.name}</strong>
           <input type="hidden" name="item_name_hidden" value="${item.name}">
         </td>
         <td class="text-center">
-          <input type="number" class="form-control form-control-sm text-center" value="${item.total_output}" readonly />
+          <input type="number" class="form-control form-control-sm text-center" value="${item.total_output_received}" readonly />
         </td>
         <td class="text-center">
           <input type="number" min="0" name="senior_taken" value="${item.senior_taken}" class="form-control form-control-sm text-center" />
