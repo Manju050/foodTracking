@@ -821,21 +821,23 @@ def admin_sync_items():
 @app.route('/admin/counter_items/<int:counter_id>', methods=['GET'])
 @admin_required
 def get_counter_items(counter_id):
-    items = CounterItemStock.query.filter_by(counter_id=counter_id).join(
-        InitialPreparedSession, CounterItemStock.session_id == InitialPreparedSession.id
-    ).add_columns(
+    # Query current active session
+    current_session = InitialPreparedSession.query.filter_by(is_active=True).first()
+    if not current_session:
+        return jsonify({'items': []})
+
+    items = CounterItemStock.query.filter_by(counter_id=counter_id, session_id=current_session.id).add_columns(
         CounterItemStock.item_name,
         CounterItemStock.available_stock,
-        InitialPreparedSession.session_name
     ).all()
 
     items_list = [
         {
             'item_name': item_name,
             'available_stock': available_stock,
-            'session_name': session_name
+            'session_name': current_session.session_name
         }
-        for _, item_name, available_stock, session_name in items
+        for _, item_name, available_stock in items
     ]
 
     return jsonify({'items': items_list})
@@ -859,6 +861,10 @@ def delete_counter(counter_id):
 @app.route('/admin/manage_counters', methods=['GET', 'POST'])
 @admin_required
 def manage_counters():
+    active_session = InitialPreparedSession.query.filter_by(is_active=True).first()
+    current_session = InitialPreparedSession.query.filter_by(is_active=True).first()
+    current_session_name = current_session.session_name if current_session else ""
+
     if request.method == 'POST':
         counter_name = request.form.get('counter_name', '').strip()
         username = request.form.get('username', '').strip()
@@ -885,7 +891,7 @@ def manage_counters():
         return redirect(url_for('manage_counters'))
 
     counters = Counter.query.all()
-    return render_template('manage_counters.html', counters=counters)
+    return render_template('manage_counters.html', counters=counters,session_active=bool(active_session), current_session_name=current_session_name)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():

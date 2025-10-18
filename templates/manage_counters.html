@@ -8,18 +8,18 @@
 </head>
 <body>
   <div class="modal fade" id="counterDetailsModal" tabindex="-1" aria-labelledby="counterDetailsLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="counterDetailsLabel">Counter Stock Details</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body" id="counterDetailsBody">
-        <p>Loading counter items...</p>
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="counterDetailsLabel">Counter Stock Details</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="counterDetailsBody">
+          <p>Loading counter items...</p>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
   <div class="container my-5">
     <h2 class="text-left text-primary fw-bold my-4" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">
@@ -43,7 +43,7 @@
           <input type="text" name="counter_name" placeholder="Counter Name" required class="form-control border border-info" />
         </div>
         <div class="col-md-5">
-  <input type="text" name="username" id="username-input" placeholder="Assign to Username" required class="form-control border border-warning" autocomplete="off"/>
+          <input type="text" name="username" id="username-input" placeholder="Assign to Username" required class="form-control border border-warning" autocomplete="off"/>
         </div>
         <div class="col-md-2">
           <button type="submit" class="btn btn-primary w-100 px-4 fw-semibold">
@@ -58,35 +58,32 @@
     </h2>
 
     <table class="table table-bordered">
-<thead>
-  <tr>
-    <th>Counter ID</th>
-    <th>Counter Name</th>
-    <th>Assigned User</th>
-    <th>User ID</th>
-    <th>Actions</th>
-  </tr>
-</thead>
-
-<tbody>
-{% for counter in counters %}
-<tr class="counter-row" data-counter-id="{{ counter.id }}" style="cursor: pointer;">
-  <td>{{ counter.id }}</td>
-  <td>{{ counter.name }}</td>
-  <td>{{ counter.user.username if counter.user else '—' }}</td>
-  <td>{{ counter.user.id if counter.user else '—' }}</td>
-  <td>
-    <form method="post" action="{{ url_for('delete_counter', counter_id=counter.id) }}" onsubmit="return confirm('Are you sure you want to delete this counter?');" onclick="event.stopPropagation();">
-      <button type="submit" class="btn btn-sm btn-danger">
-        <i class="bi bi-trash"></i> Delete
-      </button>
-    </form>
-  </td>
-</tr>
-{% endfor %}
-</tbody>
-
-
+      <thead>
+        <tr>
+          <th>Counter ID</th>
+          <th>Counter Name</th>
+          <th>Assigned User</th>
+          <th>User ID</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for counter in counters %}
+        <tr class="counter-row" data-counter-id="{{ counter.id }}" style="cursor: pointer;">
+          <td>{{ counter.id }}</td>
+          <td>{{ counter.name }}</td>
+          <td>{{ counter.user.username if counter.user else '—' }}</td>
+          <td>{{ counter.user.id if counter.user else '—' }}</td>
+          <td>
+            <form method="post" action="{{ url_for('delete_counter', counter_id=counter.id) }}" onsubmit="return confirm('Are you sure you want to delete this counter?');" onclick="event.stopPropagation();">
+              <button type="submit" class="btn btn-sm btn-danger">
+                <i class="bi bi-trash"></i> Delete
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
     </table>
 
     <div class="mt-3">
@@ -96,117 +93,143 @@
     </div>
   </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  const input = document.getElementById('username-input');
-  let timeout = null;
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // This script handles username autocomplete suggestions
+    document.addEventListener('DOMContentLoaded', function () {
+      const input = document.getElementById('username-input');
+      let timeout = null;
 
-  input.addEventListener('input', function() {
-    clearTimeout(timeout);
-    
-    timeout = setTimeout(() => {
-      const query = input.value.trim();
-      if (query.length < 1) {
-        closeSuggestions();
-        return;
-      }
+      input.addEventListener('input', function() {
+        clearTimeout(timeout);
 
-      fetch(`/admin/user_suggestions?q=${encodeURIComponent(query)}`)
-        .then(response => response.json())
-        .then(data => {
-          showSuggestions(data);
-        });
-    }, 300);
-  });
+        timeout = setTimeout(() => {
+          const query = input.value.trim();
+          if (query.length < 1) {
+            closeSuggestions();
+            return;
+          }
 
-  function showSuggestions(usernames) {
-    closeSuggestions();
-    if (!usernames.length) return;
-
-    const list = document.createElement('ul');
-    list.className = 'list-group position-absolute';
-    list.style.zIndex = 1050;
-    list.style.width = input.offsetWidth + 'px';
-
-    usernames.forEach(name => {
-      const item = document.createElement('li');
-      item.className = 'list-group-item list-group-item-action';
-      item.textContent = name;
-      item.style.cursor = 'pointer';
-
-      item.addEventListener('click', () => {
-        input.value = name;
-        closeSuggestions();
+          fetch(`/admin/user_suggestions?q=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(data => {
+              showSuggestions(data);
+            });
+        }, 300);
       });
 
-      list.appendChild(item);
-    });
+      function showSuggestions(usernames) {
+        closeSuggestions();
+        if (!usernames.length) return;
 
-    input.parentNode.style.position = 'relative';
-    input.parentNode.appendChild(list);
-  }
+        const list = document.createElement('ul');
+        list.className = 'list-group position-absolute';
+        list.style.zIndex = 1050;
+        list.style.width = input.offsetWidth + 'px';
 
-  function closeSuggestions() {
-    const oldList = document.querySelector('#username-input + ul.list-group');
-    if (oldList) oldList.remove();
-  }
+        usernames.forEach(name => {
+          const item = document.createElement('li');
+          item.className = 'list-group-item list-group-item-action';
+          item.textContent = name;
+          item.style.cursor = 'pointer';
 
-  document.addEventListener('click', function(e) {
-    if (!input.contains(e.target)) closeSuggestions();
-  });
-});
-</script>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  const counterRows = document.querySelectorAll('.counter-row');
-  const counterModal = new bootstrap.Modal(document.getElementById('counterDetailsModal'));
-  const counterModalBody = document.getElementById('counterDetailsBody');
+          item.addEventListener('click', () => {
+            input.value = name;
+            closeSuggestions();
+          });
 
-  counterRows.forEach(row => {
-    row.addEventListener('click', async () => {
-      const counterId = row.getAttribute('data-counter-id');
-      counterModalBody.innerHTML = '<p>Loading counter items...</p>';
-      counterModal.show();
-
-      try {
-        const response = await fetch(`/admin/counter_items/${counterId}`);
-        if (!response.ok) throw new Error('Failed to load counter items.');
-        const data = await response.json();
-
-        if (!data.items || data.items.length === 0) {
-          counterModalBody.innerHTML = '<p>No items found for this counter.</p>';
-          return;
-        }
-
-        let html = `<table class="table table-bordered">
-                      <thead>
-                        <tr>
-                          <th>Item Name</th>
-                          <th>Available Stock</th>
-                          <th>Session Name</th>
-                        </tr>
-                      </thead>
-                      <tbody>`;
-
-        data.items.forEach(item => {
-          html += `<tr>
-                    <td>${item.item_name}</td>
-                    <td>${item.available_stock}</td>
-                    <td>${item.session_name}</td>
-                  </tr>`;
+          list.appendChild(item);
         });
 
-        html += '</tbody></table>';
-
-        counterModalBody.innerHTML = html;
-      } catch (error) {
-        counterModalBody.innerHTML = `<p class="text-danger">${error.message}</p>`;
+        input.parentNode.style.position = 'relative';
+        input.parentNode.appendChild(list);
       }
-    });
-  });
-});
-</script>
 
+      function closeSuggestions() {
+        const oldList = document.querySelector('#username-input + ul.list-group');
+        if (oldList) oldList.remove();
+      }
+
+      document.addEventListener('click', function(e) {
+        if (!input.contains(e.target)) closeSuggestions();
+      });
+    });
+
+    // This script handles counter row click events and session check
+    document.addEventListener('DOMContentLoaded', () => {
+      // Determine whether session is active (template renders 'true' or 'false')
+      const sessionActive = '{{ session_active | lower }}' === 'true';
+
+      // Function to show alert about no active session
+      function showNoSessionAlert() {
+        const container = document.querySelector('.container');
+        const existingAlert = document.querySelector('#no-session-alert');
+        if (!existingAlert) {
+          const alertDiv = document.createElement('div');
+          alertDiv.id = 'no-session-alert';
+          alertDiv.className = 'alert alert-warning alert-dismissible fade show';
+          alertDiv.role = 'alert';
+          alertDiv.innerHTML = `
+            No active session. Please start a session to view counter details.
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          `;
+          container.prepend(alertDiv);
+        }
+      }
+
+      const counterRows = document.querySelectorAll('.counter-row');
+      const counterModal = new bootstrap.Modal(document.getElementById('counterDetailsModal'));
+      const counterModalBody = document.getElementById('counterDetailsBody');
+      const currentSessionName = '{{ current_session_name }}';
+
+      counterRows.forEach(row => {
+        row.addEventListener('click', async () => {
+          if (!sessionActive) {
+            showNoSessionAlert();
+            return; // Prevent modal opening if no session
+          }
+
+          const counterId = row.getAttribute('data-counter-id');
+          counterModalBody.innerHTML = '<p>Loading counter items...</p>';
+          counterModal.show();
+
+          try {
+            const response = await fetch(`/admin/counter_items/${counterId}`);
+            if (!response.ok) throw new Error('Failed to load counter items.');
+            const data = await response.json();
+
+            if (!data.items || data.items.length === 0) {
+              counterModalBody.innerHTML = '<p>No items found for this counter.</p>';
+              return;
+            }
+
+            let html = `<table class="table table-bordered">
+                          <thead>
+                            <tr>
+                              <th>Item Name</th>
+                              <th>Available Stock</th>
+                              <th>Session Name</th>
+                            </tr>
+                          </thead>
+                          <tbody>`;
+
+            data.items.forEach(item => {
+              html += `<tr>
+                        <td>${item.item_name}</td>
+                        <td>${item.available_stock}</td>
+                        <td>${item.session_name}</td>
+                      </tr>`;
+            });
+
+            html += '</tbody></table>';
+
+            counterModalBody.innerHTML = html;
+          } catch (error) {
+            counterModalBody.innerHTML = `<p class="text-danger">${error.message}</p>`;
+          }
+        });
+      });
+    });
+  </script>
 </body>
 </html>
