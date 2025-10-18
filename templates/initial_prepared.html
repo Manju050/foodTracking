@@ -1,25 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Initial Prepared Session</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+{% extends "admin_base.html" %}
 
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-  <style>
-    body {
-      background: linear-gradient(120deg, #f8fafc 0%, #e3f0ff 100%);
-      min-height: 100vh;
-    }
-    .container {
-      background: #fff;
-      border-radius: 18px;
-      box-shadow: 0 6px 32px rgba(0,0,0,0.08);
-      padding: 2.5rem 2rem 2rem 2rem;
-      margin-top: 3rem;
-      margin-bottom: 3rem;
-    }
+{% block title %}Manage Sessions{% endblock %}
+
+{% block extra_styles %}
+<style>
     .active-session {
       font-weight: 700;
       color: #0d6efd;
@@ -58,25 +42,6 @@
       background: #b6d4fe;
       color: #0a58ca;
     }
-    .btn-primary {
-      background: linear-gradient(90deg, #0d6efd 70%, #5bc0f8 100%);
-      border: none;
-      font-weight: 600;
-      box-shadow: 0 2px 8px rgba(13,110,253,0.08);
-    }
-    .btn-outline-primary {
-      border-radius: 8px;
-      font-weight: 600;
-    }
-    .table {
-      border-radius: 12px;
-      overflow: hidden;
-      background: #f8fafc;
-      box-shadow: 0 1px 8px rgba(0,0,0,0.04);
-    }
-    .table th, .table td {
-      vertical-align: middle;
-    }
     .badge {
       font-size: 1rem;
       padding: 0.5em 1em;
@@ -91,13 +56,14 @@
       margin-left: 0.5rem;
     }
     @media (max-width: 768px) {
-      .container {
-        padding: 1rem;
-      }
       .list-group.w-50 {
         width: 100% !important;
       }
     }
+  </style>
+{% endblock %}
+
+{% block extra_head %}
   </style>
   <script>
 function addItemRow() {
@@ -119,42 +85,27 @@ function addItemRow() {
 window.onload = () => addItemRow();
 
   </script>
-</head>
-<body>
+{% endblock %}
+
+{% block content %}
   <div class="modal fade" id="sessionDetailsModal" tabindex="-1" aria-labelledby="sessionDetailsLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="sessionDetailsLabel">Session Items</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body" id="sessionDetailsBody">
-        <!-- Session items will be dynamically loaded here -->
-        <p>Loading session items...</p>
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="sessionDetailsLabel">Session Items</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="sessionDetailsBody">
+          <!-- Session items will be dynamically loaded here -->
+          <p>Loading session items...</p>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-      {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-          </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-  <div class="container my-5">
-    <h2 class="text-primary fw-bold mb-4" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">
-      <i class="bi bi-journal-plus me-2"></i> Manage Sessions
-    </h2>
-  <div style="position: absolute; top: 1rem; right: 1rem; z-index: 1050;">
-    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-primary">
-      <i class="bi bi-arrow-left-circle me-2"></i> Back to Admin Dashboard
-    </a>
-  </div>
+  <h2 class="text-primary fw-bold mb-4 mt-3" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">
+    <i class="bi bi-journal-plus me-2"></i> Manage Sessions
+  </h2>
     {% if active_session %}
       <p>Current Active Session: <span class="active-session">{{ active_session.session_name }}</span> <span class="text-muted small">(Created on {{ active_session.created_at.strftime('%Y-%m-%d %H:%M') }})</span></p>
     {% else %}
@@ -272,8 +223,9 @@ window.onload = () => addItemRow();
         </table>
       </div>
     </section>
-  </div>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% endblock %}
+
+{% block extra_scripts %}
   <script>
   async function showSessionDetails(sessionId) {
     const modal = new bootstrap.Modal(document.getElementById('sessionDetailsModal'));
@@ -320,7 +272,5 @@ window.onload = () => addItemRow();
       modalBody.innerHTML = `<p class="text-danger">${error.message}</p>`;
     }
   }
-</script>
-
-</body>
-</html>
+  </script>
+{% endblock %}

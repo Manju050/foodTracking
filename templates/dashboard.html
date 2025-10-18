@@ -22,7 +22,8 @@
 {% else %}
 
 <body>
-      {% with messages = get_flashed_messages(with_categories=true) %}
+  <div class="container my-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
           <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
@@ -32,9 +33,8 @@
         {% endfor %}
       {% endif %}
     {% endwith %}
-  <div class="container my-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h1 class="text-success mb-0">My Counter Dashboard</h1>
+      <h1 class="text-primary mb-0">My Counter Dashboard</h1>
       <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">
         <i class="bi bi-box-arrow-right"></i> Logout
       </a>
@@ -68,25 +68,44 @@
     <thead class="table-light">
       <tr>
         <th>Item Name</th>
-        <th>Available Stock With Me</th>
-        <th>Update Available Stock</th>
+        <!-- <th>Available Stock With Me</th> -->
+        <th>Current Available Stock</th>
       </tr>
     </thead>
     <tbody>
       {% for item in items %}
       <tr>
         <td>{{ item.item_name }}</td>
-        <td>{{ item.available_stock or 0 }}</td>
+        <!-- <td>{{ item.available_stock or 0 }}</td> -->
         <td>
+          {% if counter.name == 'kitchen' %}
+          <!-- For specific counter: numeric input from 0 to 10000 -->
           <input 
             type="number" 
             name="available_stock_{{ item.id }}" 
             value="{{ item.available_stock or 0 }}" 
             min="0" 
-            style="width:90px;" 
+            max="10000"
+            style="width:100px;" 
             required 
             class="form-control"
           >
+          {% else %}
+          <!-- For other counters: dropdown with 1, 0.75, 0.5, 0.25, 0 -->
+          <select 
+            name="available_stock_{{ item.id }}" 
+            class="form-select" 
+            style="width:120px;"
+            required
+          >
+            {% set stock_val = item.available_stock|float if item.available_stock is not none else 0 %}
+            <option value="1" {% if stock_val == 1.0 %}selected{% endif %}>1</option>
+            <option value="0.75" {% if stock_val == 0.75 %}selected{% endif %}>0.75</option>
+            <option value="0.5" {% if stock_val == 0.5 %}selected{% endif %}>0.5</option>
+            <option value="0.25" {% if stock_val == 0.25 %}selected{% endif %}>0.25</option>
+            <option value="0" {% if stock_val == 0.0 %}selected{% endif %}>0</option>
+          </select>
+          {% endif %}
         </td>
       </tr>
       {% else %}
@@ -105,6 +124,18 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  
+  <script>
+    // Auto-refresh page 1.5 seconds after SUCCESS flash message appears (not warning/info alerts)
+    document.addEventListener('DOMContentLoaded', function() {
+      const successAlerts = document.querySelectorAll('.alert-success');
+      if (successAlerts.length > 0) {
+        setTimeout(function() {
+          window.location.reload();
+        }, 1500); // 1.5 seconds
+      }
+    });
+  </script>
 </body>
 
 {% endif %}

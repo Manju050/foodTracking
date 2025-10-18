@@ -50,7 +50,7 @@ class CounterItemStock(db.Model):
 
     counter_id = db.Column(db.Integer, db.ForeignKey('counter.id', ondelete='CASCADE'), nullable=False)
     session_id = db.Column(db.Integer, db.ForeignKey('initial_prepared_session.id'), nullable=False)
-    available_stock = db.Column(db.Integer, default=0)
+    available_stock = db.Column(db.Float, default=0)  # save decimal values as well
 
     counter = db.relationship('Counter', backref=db.backref('counter_item_stocks', cascade='all, delete-orphan'))
     session = db.relationship('InitialPreparedSession', backref='counter_item_stocks')
@@ -246,12 +246,13 @@ def update_available_stock(counter_id, session_id):
         form_field = f"available_stock_{stock_entry.id}"
         if form_field in request.form:
             try:
-                val = int(request.form[form_field])
+                val = float(request.form[form_field])  # parse decimal values as well
                 stock_entry.available_stock = val
             except ValueError:
                 pass
 
     db.session.commit()
+    flash('Stock updated successfully!', 'success')
     return redirect(url_for('home', counter_id=counter_id))
 
 
@@ -285,7 +286,7 @@ def home():
         items = CounterItemStock.query.filter_by(
             counter_id=counter.id,
             session_id=active_session.id
-        ).all()
+        ).order_by(CounterItemStock.id).all()  # Display items in fixed order everytime
     
     no_active_session = active_session is None
 
@@ -890,8 +891,57 @@ def manage_counters():
 
         return redirect(url_for('manage_counters'))
 
-    counters = Counter.query.all()
-    return render_template('manage_counters.html', counters=counters,session_active=bool(active_session), current_session_name=current_session_name)
+    counters = Counter.query.order_by(Counter.id).all()  # Order by ID to prevent shuffling
+    users = User.query.order_by(User.username).all()  # Sort users alphabetically
+    return render_template('manage_counters.html', counters=counters, users=users, session_active=bool(active_session), current_session_name=current_session_name)
+
+@app.route('/admin/update_multiple_counter_users', methods=['POST'])
+@admin_required
+def update_multiple_counter_users():
+    counter_ids = request.form.getlist('counter_ids')
+    user_ids = request.form.getlist('user_ids')
+    
+    if not counter_ids or not user_ids or len(counter_ids) != len(user_ids):
+        flash('Invalid data provided.', 'danger')
+        return redirect(url_for('manage_counters'))
+    
+    updated_counters = []
+    
+    # Update each counter
+    for counter_id, user_id in zip(counter_ids, user_ids):
+        counter = Counter.query.get(int(counter_id))
+        user = User.query.get(int(user_id))
+        
+        if counter and user:
+            counter.user = user
+            updated_counters.append(f"{counter.name} → {user.username}")
+    
+    db.session.commit()
+    
+    # Create flash message
+    if len(updated_counters) == 1:
+        flash(f'Counter updated: {updated_counters[0]}', 'success')
+    else:
+        flash(f'{len(updated_counters)} counters updated successfully!', 'success')
+    
+    return redirect(url_for('manage_counters'))
+
+@app.route('/admin/update_counter_user/<int:counter_id>', methods=['POST'])
+@admin_required
+def update_counter_user(counter_id):
+    counter = Counter.query.get_or_404(counter_id)
+    user_id = request.form.get('user_id')
+    
+    if not user_id:
+        flash('User ID is required.', 'danger')
+        return redirect(url_for('manage_counters'))
+    
+    user = User.query.get_or_404(int(user_id))
+    counter.user = user
+    db.session.commit()
+    
+    flash(f'Counter "{counter.name}" reassigned to user "{user.username}".', 'success')
+    return redirect(url_for('manage_counters'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -921,14 +971,17 @@ def manage_users():
         if username and password:
             existing = User.query.filter_by(username=username).first()
             if existing:
-                return "User already exists", 400
+                flash(f'User "{username}" already exists!', 'danger')
+                return redirect(url_for('manage_users'))
             user = User(username=username, is_admin=is_admin)
             user.set_password(password)
             db.session.add(user)
             db.session.commit()
+            flash(f'User "{username}" created successfully!', 'success')
             return redirect(url_for('manage_users'))
         else:
-            return "Username and password required", 400
+            flash('Username and password are required!', 'danger')
+            return redirect(url_for('manage_users'))
 
     users = User.query.order_by(User.username).all()  # Sort users alphabetically by username
     return render_template('manage_users.html', users=users)
@@ -952,9 +1005,13 @@ def delete_user(user_id):
     user = User.query.get_or_404(user_id)
     # Prevent deleting self or last admin if needed
     if user.id == session.get('user_id'):
-        return "Cannot delete yourself", 400
+        flash('Cannot delete yourself!', 'danger')
+        return redirect(url_for('manage_users'))
+    
+    username = user.username  # Store username before deletion
     db.session.delete(user)
     db.session.commit()
+    flash(f'User "{username}" deleted successfully!', 'success')
     return redirect(url_for('manage_users'))
 
 @app.route('/logout', methods=['GET', 'POST'])
