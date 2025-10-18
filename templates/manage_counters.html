@@ -1,41 +1,52 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Manage Counters - Admin Dashboard</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
-</head>
-<body>
-  <div class="modal fade" id="counterDetailsModal" tabindex="-1" aria-labelledby="counterDetailsLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="counterDetailsLabel">Counter Stock Details</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body" id="counterDetailsBody">
-        <p>Loading counter items...</p>
-      </div>
-    </div>
-  </div>
-</div>
+{% extends "admin_base.html" %}
 
-  <div class="container my-5">
-    <h2 class="text-left text-primary fw-bold my-4" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">
-      MANAGE COUNTERS
-    </h2>
+{% block title %}Manage Counters{% endblock %}
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-          </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+{% block extra_styles %}
+<style>
+  .dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 1000;
+    background-color: white;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  }
+  
+  .dropdown-menu .dropdown-item {
+    padding: 0.4rem 0.8rem;
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out;
+    font-size: 0.85rem;
+  }
+  
+  .dropdown-menu .dropdown-item:hover {
+    background-color: #f8f9fa;
+  }
+  
+  .dropdown-toggle::after {
+    margin-left: 0.3em;
+  }
+  
+  .user-list {
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  
+  /* Add spacing between username and dropdown button */
+  .gap-3 {
+    gap: 1rem !important;
+  }
+  
+</style>
+{% endblock %}
+
+{% block content %}
+  <h2 class="text-left text-primary fw-bold my-4" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">
+    MANAGE COUNTERS
+  </h2>
 
     <form method="post" class="mb-4 p-4 bg-light rounded shadow-sm border border-primary">
       <div class="row g-3 align-items-center">
@@ -58,46 +69,83 @@
     </h2>
 
     <table class="table table-bordered">
-<thead>
-  <tr>
-    <th>Counter ID</th>
-    <th>Counter Name</th>
-    <th>Assigned User</th>
-    <th>User ID</th>
-    <th>Actions</th>
-  </tr>
-</thead>
-
-<tbody>
-{% for counter in counters %}
-<tr class="counter-row" data-counter-id="{{ counter.id }}" style="cursor: pointer;">
-  <td>{{ counter.id }}</td>
-  <td>{{ counter.name }}</td>
-  <td>{{ counter.user.username if counter.user else '—' }}</td>
-  <td>{{ counter.user.id if counter.user else '—' }}</td>
-  <td>
-    <form method="post" action="{{ url_for('delete_counter', counter_id=counter.id) }}" onsubmit="return confirm('Are you sure you want to delete this counter?');" onclick="event.stopPropagation();">
-      <button type="submit" class="btn btn-sm btn-danger">
-        <i class="bi bi-trash"></i> Delete
-      </button>
-    </form>
-  </td>
-</tr>
-{% endfor %}
-</tbody>
-
-
+      <thead>
+        <tr>
+          <th>Counter ID</th>
+          <th>Counter Name</th>
+          <th>Assigned User</th>
+          <th>User ID</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for counter in counters %}
+        <tr>
+          <td>{{ counter.id }}</td>
+          <td>{{ counter.name }}</td>
+          <td>
+            <!-- Searchable dropdown to change the assigned user. The dropdown doesn't show default admin and current assigned user -->
+            <!-- The selection can be cleared by clicking the "x" icon next to the selected username. -->
+            <div class="d-flex align-items-center gap-3">
+              <span>{{ counter.user.username if counter.user else '—' }}</span>
+              <div class="dropdown position-relative" style="display: inline-block;">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" 
+                        type="button" 
+                        data-counter-id="{{ counter.id }}"
+                        data-current-user-id="{{ counter.user.id if counter.user else '' }}"
+                        onclick="toggleDropdown(event, this)"
+                        style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">
+                  Change user
+                </button>
+                <div class="dropdown-menu p-2" style="display: none; min-width: 180px; max-height: 250px; overflow-y: auto;">
+                  <input type="text" 
+                         class="form-control form-control-sm mb-2" 
+                         placeholder="Search users..." 
+                         onkeyup="filterUsers(this)"
+                         onclick="event.stopPropagation()"
+                         style="font-size: 0.85rem;">
+                  <ul class="list-unstyled mb-0 user-list">
+                    {% for user in users %}
+                      {# Show all users except the default 'admin' user and the currently assigned user #}
+                      {% if user.username != 'admin' and (not counter.user or user.id != counter.user.id) %}
+                      <li>
+                        <a class="dropdown-item" 
+                           href="#" 
+                           data-user-id="{{ user.id }}"
+                           data-username="{{ user.username }}"
+                           onclick="selectUser(event, this)"
+                           style="font-size: 0.85rem; padding: 0.4rem 0.8rem;">
+                          {{ user.username }}
+                        </a>
+                      </li>
+                      {% endif %}
+                    {% endfor %}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </td>
+          <td>{{ counter.user.id if counter.user else '—' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" class="text-center">No counters found.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
     </table>
 
-    <div class="mt-3">
-      <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-primary">
-        <i class="bi bi-arrow-left-circle me-2"></i> Back to Admin Dashboard
-      </a>
-    </div>
-  </div>
+    <form id="update-counter-form" method="post" action="{{ url_for('update_multiple_counter_users') }}" style="display: none;">
+      <div id="counter-updates-container"></div>
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-check-circle me-2"></i> Update All Changes
+      </button>
+    </form>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% endblock %}
+
+{% block extra_scripts %}
 <script>
+// Existing autocomplete functionality for the add counter form
 document.addEventListener('DOMContentLoaded', function () {
   const input = document.getElementById('username-input');
   let timeout = null;
@@ -156,57 +204,172 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!input.contains(e.target)) closeSuggestions();
   });
 });
-</script>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  const counterRows = document.querySelectorAll('.counter-row');
-  const counterModal = new bootstrap.Modal(document.getElementById('counterDetailsModal'));
-  const counterModalBody = document.getElementById('counterDetailsBody');
 
-  counterRows.forEach(row => {
-    row.addEventListener('click', async () => {
-      const counterId = row.getAttribute('data-counter-id');
-      counterModalBody.innerHTML = '<p>Loading counter items...</p>';
-      counterModal.show();
+// New dropdown functionality for changing counter users
+let currentOpenDropdown = null;
+let counterChanges = {}; // Track multiple counter changes: {counterId: {userId, username}}
 
-      try {
-        const response = await fetch(`/admin/counter_items/${counterId}`);
-        if (!response.ok) throw new Error('Failed to load counter items.');
-        const data = await response.json();
+function toggleDropdown(event, button) {
+  event.stopPropagation();
+  
+  const dropdown = button.nextElementSibling;
+  const isCurrentlyOpen = dropdown.style.display === 'block';
+  
+  // Close all dropdowns first
+  closeAllDropdowns();
+  
+  // If it wasn't open, open it
+  if (!isCurrentlyOpen) {
+    dropdown.style.display = 'block';
+    currentOpenDropdown = dropdown;
+    
+    // Reset search input
+    const searchInput = dropdown.querySelector('input[type="text"]');
+    if (searchInput) {
+      searchInput.value = '';
+      filterUsers(searchInput);
+    }
+  }
+}
 
-        if (!data.items || data.items.length === 0) {
-          counterModalBody.innerHTML = '<p>No items found for this counter.</p>';
-          return;
-        }
-
-        let html = `<table class="table table-bordered">
-                      <thead>
-                        <tr>
-                          <th>Item Name</th>
-                          <th>Available Stock</th>
-                          <th>Session Name</th>
-                        </tr>
-                      </thead>
-                      <tbody>`;
-
-        data.items.forEach(item => {
-          html += `<tr>
-                    <td>${item.item_name}</td>
-                    <td>${item.available_stock}</td>
-                    <td>${item.session_name}</td>
-                  </tr>`;
-        });
-
-        html += '</tbody></table>';
-
-        counterModalBody.innerHTML = html;
-      } catch (error) {
-        counterModalBody.innerHTML = `<p class="text-danger">${error.message}</p>`;
-      }
-    });
+function closeAllDropdowns() {
+  document.querySelectorAll('.dropdown-menu').forEach(menu => {
+    menu.style.display = 'none';
   });
+  currentOpenDropdown = null;
+}
+
+function filterUsers(input) {
+  const filter = input.value.toLowerCase();
+  const dropdown = input.closest('.dropdown-menu');
+  const items = dropdown.querySelectorAll('.user-list li');
+  
+  items.forEach(item => {
+    const text = item.textContent.toLowerCase();
+    if (text.includes(filter)) {
+      item.style.display = '';
+    } else {
+      item.style.display = 'none';
+    }
+  });
+}
+
+function selectUser(event, link) {
+  event.preventDefault();
+  event.stopPropagation();
+  
+  const userId = link.getAttribute('data-user-id');
+  const username = link.getAttribute('data-username');
+  const dropdown = link.closest('.dropdown-menu');
+  const button = dropdown.previousElementSibling;
+  const counterId = button.getAttribute('data-counter-id');
+  const currentUserId = button.getAttribute('data-current-user-id');
+  
+  // Only track change if user selected is different from current user
+  if (userId !== currentUserId) {
+    // Store this counter change
+    counterChanges[counterId] = {
+      userId: userId,
+      username: username,
+      button: button
+    };
+    
+    // Highlight the button to show selection with clear option
+    button.classList.add('btn-primary');
+    button.classList.remove('btn-outline-secondary');
+    button.innerHTML = `Change to: ${username} <i class="bi bi-x-circle ms-1" onclick="clearSelection(event, ${counterId})" style="cursor: pointer;"></i>`;
+    
+    // Update the form with all pending changes
+    updateFormWithChanges();
+    
+    // Show the update button
+    const updateForm = document.getElementById('update-counter-form');
+    updateForm.style.display = 'block';
+  }
+  
+  closeAllDropdowns();
+}
+
+function clearSelection(event, counterId) {
+  event.stopPropagation();
+  event.preventDefault();
+  
+  // Remove this counter from pending changes
+  if (counterChanges[counterId]) {
+    const button = counterChanges[counterId].button;
+    
+    // Reset button to original state
+    button.classList.remove('btn-primary');
+    button.classList.add('btn-outline-secondary');
+    button.textContent = 'Change user';
+    
+    // Remove from changes object
+    delete counterChanges[counterId];
+    
+    // Update form
+    if (Object.keys(counterChanges).length > 0) {
+      updateFormWithChanges();
+    } else {
+      // Hide update button if no changes remain
+      const updateForm = document.getElementById('update-counter-form');
+      updateForm.style.display = 'none';
+    }
+  }
+}
+
+function updateFormWithChanges() {
+  const container = document.getElementById('counter-updates-container');
+  container.innerHTML = ''; // Clear existing inputs
+  
+  // Add hidden inputs for each counter change
+  Object.keys(counterChanges).forEach(counterId => {
+    const change = counterChanges[counterId];
+    
+    const counterInput = document.createElement('input');
+    counterInput.type = 'hidden';
+    counterInput.name = 'counter_ids';
+    counterInput.value = counterId;
+    container.appendChild(counterInput);
+    
+    const userInput = document.createElement('input');
+    userInput.type = 'hidden';
+    userInput.name = 'user_ids';
+    userInput.value = change.userId;
+    container.appendChild(userInput);
+  });
+  
+  // Update button text to show number of changes
+  const changeCount = Object.keys(counterChanges).length;
+  const submitBtn = document.querySelector('#update-counter-form button[type="submit"]');
+  if (changeCount === 1) {
+    submitBtn.innerHTML = '<i class="bi bi-check-circle me-2"></i> Update 1 Counter';
+  } else {
+    submitBtn.innerHTML = `<i class="bi bi-check-circle me-2"></i> Update ${changeCount} Counters`;
+  }
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(event) {
+  if (!event.target.closest('.dropdown')) {
+    closeAllDropdowns();
+  }
+});
+
+// Prevent dropdown from closing when clicking inside it
+document.addEventListener('click', function(event) {
+  if (event.target.closest('.dropdown-menu')) {
+    event.stopPropagation();
+  }
+});
+
+// Auto-refresh page 2.5 seconds after flash message appears
+document.addEventListener('DOMContentLoaded', function() {
+  const alerts = document.querySelectorAll('.alert');
+  if (alerts.length > 0) {
+    setTimeout(function() {
+      window.location.reload();
+    }, 2000); // 2 seconds
+  }
 });
 </script>
-
-</body>
-</html>
+{% endblock %}
