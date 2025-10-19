@@ -72,8 +72,8 @@ function addItemRow() {
 
   row.innerHTML = `
     <td><input type="text" name="item_name" placeholder="Item Name" class="form-control" required /></td>
-    <td><input type="text" name="total_expected_to_prepare" placeholder="Total Expected to Prepare" class="form-control" required /></td>
-    <td><input type="number" name="total_output_received" min="0" placeholder="Total Output Received" class="form-control" required /></td>
+    <td><input type="number" name="total_expected_to_prepare" step="0.01" min="0" placeholder="Total Expected to Prepare" class="form-control" required /></td>
+    <td><input type="number" name="total_output_received" step="0.01" min="0" placeholder="Total Output Received" class="form-control" required /></td>
     <td><button type="button" class="btn btn-danger" onclick="this.closest('tr').remove()">
       <i class="bi bi-x-circle"></i> Remove
     </button></td>

@@ -9,6 +9,7 @@ from datetime import datetime
 from io import BytesIO
 import re
 import pytz
+import math
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Flask, render_template, request, redirect, url_for, flash
 
@@ -41,8 +42,8 @@ class InitialPreparedItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey('initial_prepared_session.id'), nullable=False)
     name = db.Column(db.String(100), nullable=False)
-    total_expected_to_prepare = db.Column(db.Integer, nullable=True)
-    total_output_received = db.Column(db.Integer, nullable=True)
+    total_expected_to_prepare = db.Column(db.Float, nullable=True)
+    total_output_received = db.Column(db.Float, nullable=True)
 
 class CounterItemStock(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -387,14 +388,23 @@ def initial_prepared():
 
         # Add items
         for name, total_expcted ,total_otp in zip(item_names, toal_expecteds,total_outputs):
-            if name.strip() and total_otp.isdigit() and total_expcted.isdigit():
-                ip_item = InitialPreparedItem(
-                    session_id=new_session.id,
-                    name=name.strip(),
-                    total_expected_to_prepare=int(total_expcted),
-                    total_output_received=int(total_otp)
-                )
-                db.session.add(ip_item)
+            if name.strip():
+                # Try to parse as float, skip if invalid
+                try:
+                    total_expcted_val = float(total_expcted) if total_expcted.strip() else None
+                    total_otp_val = float(total_otp) if total_otp.strip() else None
+                    
+                    if total_expcted_val is not None and total_otp_val is not None:
+                        ip_item = InitialPreparedItem(
+                            session_id=new_session.id,
+                            name=name.strip(),
+                            total_expected_to_prepare=total_expcted_val,
+                            total_output_received=total_otp_val
+                        )
+                        db.session.add(ip_item)
+                except (ValueError, AttributeError):
+                    # Skip invalid entries
+                    continue
 
         db.session.commit()
         # Sync session items to counters right after saving new session
@@ -448,8 +458,12 @@ def admin_dashboard():
 
         for idx, name in enumerate(item_names):
             ip_items = InitialPreparedItem.query.filter_by(name=name).all()
-            T = int(total_prepared_inputs[idx]) if total_prepared_inputs[idx].isdigit() else 0
-            S = int(senior_taken_inputs[idx]) if senior_taken_inputs[idx].isdigit() else 0
+            try:
+                T = float(total_prepared_inputs[idx]) if total_prepared_inputs[idx].strip() else 0
+                S = float(senior_taken_inputs[idx]) if senior_taken_inputs[idx].strip() else 0
+            except (ValueError, IndexError):
+                T = 0
+                S = 0
             for ip_item in ip_items:
                 ip_item.total_output_received = T
                 # You may extend InitialPreparedItem to store senior_taken if needed
@@ -551,7 +565,9 @@ def admin_api_data():
         if not item:
             return 0
         T = item.total_output_received
-        
+        if T and T > 0:
+            T = round(T, 2)
+
         # Get M: Available stock in "Main Stock" counter
         main_stock = db.session.query(
             func.coalesce(func.sum(func.coalesce(CounterItemStock.available_stock, 0)), 0)
@@ -563,6 +579,8 @@ def admin_api_data():
             Counter.name == 'Main Stock'
         ).scalar()
         M = main_stock if main_stock else 0
+        if M and M > 0:
+            M = round(M, 2)
         
         # Get X: Sum of available stocks in all normal counters (Counter 1-15)
         normal_stock = db.session.query(
@@ -575,6 +593,8 @@ def admin_api_data():
             Counter.name.notin_(['Main Stock', 'Varishtha Vaishnava'])
         ).scalar()
         X = normal_stock if normal_stock else 0
+        if X and X > 0:
+            X = round(X, 2)
         
         # Get S: Available stock in "Varishtha Vaishnava" counter
         Varishtha_stock = db.session.query(
@@ -587,19 +607,24 @@ def admin_api_data():
             Counter.name == 'Varishtha Vaishnava'
         ).scalar()
         S = Varishtha_stock if Varishtha_stock else 0
+        if S and S > 0:
+            S = round(S, 2)
         
         # Get D: Number of devotees taken prasadam
         stats = GlobalStats.query.filter_by(session_id=session_id).first()
         D = stats.total_devotees_taken if stats else 0
+
         
         # Calculate formula: ((M+X)*D)/((T-S)-(M+X))
         numerator = (M + X) * D
         denominator = (T - S) - (M + X)
         total_consumed = max(denominator, 0)
+        if total_consumed > 0:
+            total_consumed = round(total_consumed, 2)
         
         if denominator > 0 and numerator >= 0:
             estimated_count = numerator / denominator
-            estimated_count = round(estimated_count, 2)
+            estimated_count = math.floor(estimated_count)
         else:
             estimated_count = 0
 
@@ -936,21 +961,29 @@ def manage_session_items(session_id):
 
             total_otp = total_output_receiveds[idx].strip()
             total_exp_otp = total_expected_to_prepares[idx].strip()
-            if not name or not total_otp.isdigit() or not total_exp_otp.isdigit():
+            
+            if not name:
                 continue
             
-            total_otp = int(total_otp)
-            total_exp_otp = int(total_exp_otp)
+            # Try to parse as float
+            try:
+                total_otp_val = float(total_otp) if total_otp else None
+                total_exp_otp_val = float(total_exp_otp) if total_exp_otp else None
+                
+                if total_otp_val is None or total_exp_otp_val is None:
+                    continue
+            except ValueError:
+                continue
         
             if item_id:  # existing item, update it
                 if item_id in existing_ids:
                     item = InitialPreparedItem.query.get(int(item_id))
-                    item.total_expected_to_prepare = total_exp_otp
+                    item.total_expected_to_prepare = total_exp_otp_val
                     item.name = name
-                    item.total_output_received = total_otp
+                    item.total_output_received = total_otp_val
             else:
                 # New item (empty or missing id)
-                item = InitialPreparedItem(session_id=session.id, name=name,total_expected_to_prepare=total_exp_otp, total_output_received=total_otp)
+                item = InitialPreparedItem(session_id=session.id, name=name, total_expected_to_prepare=total_exp_otp_val, total_output_received=total_otp_val)
                 db.session.add(item)
 
 
