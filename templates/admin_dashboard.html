@@ -47,6 +47,13 @@
     line-height: 1.2;
   }
 
+  /* Action buttons - auto width on desktop, consistent styling */
+  @media (min-width: 768px) {
+    .w-100.w-md-auto {
+      width: auto !important;
+    }
+  }
+
   /* Responsive adjustments for mobile */
   @media (max-width: 767.98px) {
     /* Session list - keep items horizontal but allow wrapping */
@@ -95,10 +102,9 @@
       max-width: 50%;
     }
     
-    /* Save snapshot button */
-    .btn-danger.mb-3 {
-      font-size: 0.9rem !important;
-      padding: 0.6rem !important;
+    /* Action buttons - full width on mobile */
+    .w-100.w-md-auto {
+      width: 100% !important;
     }
     
     /* Update button - reduce height */
@@ -169,12 +175,23 @@
   <div class="header-section d-flex justify-content-between align-items-center pt-2 pb-2 mb-3 mt-2 border-bottom">
     <h1 class="h3 text-primary mb-0">Admin Dashboard</h1>
   </div>
-      <div class="mb-4"></div>
-      <form method="post" action="{{ url_for('save_snapshot') }}">
-        <button type="submit" class="btn btn-danger mb-3">
-          <i class="bi bi-camera me-1"></i> Save Current Session Snapshot
-        </button>
-      </form>
+    <div class="mb-3"></div>
+      <!-- Action buttons: left and right aligned on desktop, stacked on mobile -->
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
+        <form method="post" action="{{ url_for('save_snapshot') }}" class="w-100 w-md-auto">
+          <button type="submit" class="btn btn-warning w-100 w-md-auto" style="font-size: 0.95rem; padding: 0.5rem 1rem;">
+            <i class="bi bi-camera me-1"></i> Save Current Session Snapshot
+          </button>
+        </form>
+        
+        <form method="post" action="{{ url_for('reset_normal_counter_stocks') }}" 
+              onsubmit="return confirm('Are you sure you want to reset all normal counter stocks to NULL? This will clear stock values for Counter 1-15 only (Main Stock and Varistha Vaishnava will not be affected).');"
+              class="w-100 w-md-auto">
+          <button type="submit" class="btn btn-danger w-100 w-md-auto" style="font-size: 0.95rem; padding: 0.5rem 1rem;">
+            <i class="bi bi-arrow-clockwise me-1"></i> Reset Normal Counter Stocks
+          </button>
+        </form>
+      </div>
 
 <ul class="list-group mb-4">
  {% set active_sessions = sessions | selectattr('is_active') | list %}
@@ -249,7 +266,7 @@
     
 
       
-      <form method="post" action="{{ url_for('admin_dashboard') }}" class="mb-3">
+      <form method="post" action="{{ url_for('admin_dashboard') }}" class="mb-4">
 
         <div class="table-responsive shadow-sm rounded" style="max-height: 500px; overflow: auto;">
           <table class="table table-bordered table-hover align-middle mb-0 bg-white" id="item-table">
@@ -257,10 +274,10 @@
               <tr>
                 <th>Item Name</th>
                 <th class="text-center">Total Prepared (T)</th>
-                <th class="text-center">Senior Taken (S)</th>
-                <th class="text-center">Available at Counters (x)</th>
-                <th class="text-center">Total Consumed (C)</th>        <!-- New column -->
-                <th class="text-center">Estimated Available for Serving</th>
+                <th class="text-center">Varishta Vaishnava Taken (S)</th>
+                <th class="text-center">Available at Counters (M+X)</th>
+                <th class="text-center">Total Consumed (C)</th>
+                <th class="text-center">Estimated Remaining Count</th>
 
               </tr>
             </thead>
@@ -293,6 +310,7 @@
           </table>
         </div>
       </form>
+      <div class="mb-4"></div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -311,8 +329,10 @@ async function fetchAdminData() {
 
     data.items.forEach(item => {
       const tr = document.createElement('tr');
-      if (item.warning) {
+      if (item.status === 'danger') {
         tr.classList.add('table-danger');
+      } else if (item.status === 'success') {
+        tr.classList.add('table-success');
       }
 
       tr.innerHTML = `
@@ -339,6 +359,6 @@ async function fetchAdminData() {
 }
 
 fetchAdminData();
-setInterval(fetchAdminData, 2000);
+setInterval(fetchAdminData, 5000); // Refresh calculation every 5 seconds
 </script>
 {% endblock %}
