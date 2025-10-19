@@ -15,7 +15,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
 
-POSTGRES_LOCAL_URI = 'postgresql://manju-17840:password@localhost/postgres'
+POSTGRES_LOCAL_URI = 'postgresql://lsandadi@localhost/prasadamtrackingdb'
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or POSTGRES_LOCAL_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -100,6 +100,25 @@ class PreviousSavedSessions(db.Model):
         nullable=False
     )
 
+class StockResetNotification(db.Model):
+    """Track when normal counter stocks are reset to notify counter users"""
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('initial_prepared_session.id'), nullable=False)
+    reset_timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    acknowledged_by_counters = db.Column(db.Text, default='')  # Comma-separated counter IDs who acknowledged
+    
+    def is_acknowledged_by_counter(self, counter_id):
+        """Check if a counter has acknowledged this notification"""
+        ack_ids = self.acknowledged_by_counters.split(',') if self.acknowledged_by_counters else []
+        return str(counter_id) in ack_ids
+    
+    def acknowledge_by_counter(self, counter_id):
+        """Mark notification as acknowledged by a counter"""
+        ack_ids = self.acknowledged_by_counters.split(',') if self.acknowledged_by_counters else []
+        if str(counter_id) not in ack_ids:
+            ack_ids.append(str(counter_id))
+            self.acknowledged_by_counters = ','.join(filter(None, ack_ids))
+
 # Decorators
 def login_required(f):
     @wraps(f)
@@ -151,6 +170,36 @@ def sync_session_items_to_counters(session_id):
                 db.session.delete(c_item)
 
     db.session.commit()
+
+def create_default_counters():
+    """
+    Creates 15 default counters (Counter 1 to Counter 15) and 2 special counters.
+    """
+    created_count = 0
+    
+    # Create Counter 1 to Counter 15
+    for i in range(1, 16):
+        counter_name = f"Counter {i}"
+        existing_counter = Counter.query.filter_by(name=counter_name).first()
+        if not existing_counter:
+            new_counter = Counter(name=counter_name, user_id=None)
+            db.session.add(new_counter)
+            created_count += 1
+    
+    # Create special counters
+    special_counters = ['Main Stock', 'Varistha Vaishnava']
+    for counter_name in special_counters:
+        existing_counter = Counter.query.filter_by(name=counter_name).first()
+        if not existing_counter:
+            new_counter = Counter(name=counter_name, user_id=None)
+            db.session.add(new_counter)
+            created_count += 1
+    
+    if created_count > 0:
+        db.session.commit()
+        print(f"Created {created_count} new counters. Total counters now: {Counter.query.count()}")
+    else:
+        print(f"All default counters already exist. Total counters: {Counter.query.count()}")
 
 @app.route('/admin/activate_session/<int:session_id>', methods=['POST'])
 @admin_required
@@ -510,66 +559,223 @@ from sqlalchemy import func
 @admin_required
 def admin_api_data():
     # Get current active session
-    active_session = InitialPreparedSession.query.filter_by(is_active=True).first()
-    if not active_session:
+    session = InitialPreparedSession.query.filter_by(is_active=True).first()
+    if not session:
         # No active session, return empty data
         return jsonify({"items": [], "total_devotees_taken": 0})
-
-    # Aggregate available_stock per item for the active session across all counters
-    stock_sums = db.session.query(
-        CounterItemStock.item_name,
-        func.coalesce(func.sum(CounterItemStock.available_stock), 0)
-    ).filter(
-        CounterItemStock.session_id == active_session.id
-    ).group_by(CounterItemStock.item_name).all()
-
-    stock_sum_map = {name: total for name, total in stock_sums}
-
-    # Get session items for total_output_received and senior_taken values
-    session_items = InitialPreparedItem.query.filter_by(session_id=active_session.id).all()
-
-    stats = GlobalStats.query.filter_by(session_id=active_session.id).first()
-    total_expected_devotees_count = active_session.total_expected_devotees_count if active_session.total_expected_devotees_count else 0
-    total_devotees_taken = stats.total_devotees_taken if stats else 0
-    remaining_devotees_to_honour_prasadam = total_expected_devotees_count - total_devotees_taken
-
+    
+    session_id = session.id
+    session_items = InitialPreparedItem.query.filter_by(session_id=session.id).all()
+    total_expected_devotees_count = session.total_expected_devotees_count if session.total_expected_devotees_count else 0
     items_list = []
     for ip_item in session_items:
-        name = ip_item.name
-        T = ip_item.total_output_received
-        S = 0  # Modify if you track senior_taken per session item, else keep 0
-        x = stock_sum_map.get(name, 0)
-        denominator = T - S - x
-        consumed_calc = max(denominator, 0)
-        print(f"{name}: T={T}, S={S}, x={x}, consumed={max(T - S - x, 0)}")
-
-        if denominator > 0 and total_devotees_taken > 0:
-            estimated_available = int(x * total_devotees_taken / denominator)
+        # Calculate estimated devotee count who can take prasadam using formula: ((M+X)*D)/((T-S)-(M+X))
+        # T - "Total output received" of the item
+        # M - available stock in "Main Stock" counter
+        # X - Sum of available stocks in all normal counters
+        # S - available stock in "Varishta Vaishnava" counter
+        # D - number of devotees taken prasadam in normal counters
+        # Returns: estimated number of devotees that can be served with remaining stock
+        item_name = ip_item.name
+        # Get T: Total output received for this item
+        item = InitialPreparedItem.query.filter_by(session_id=session_id, name=item_name).first()
+        if not item:
+            return 0
+        T = item.total_output_received
+        
+        # Get M: Available stock in "Main Stock" counter
+        main_stock = db.session.query(
+            func.coalesce(func.sum(func.coalesce(CounterItemStock.available_stock, 0)), 0)
+        ).join(
+            Counter, Counter.id == CounterItemStock.counter_id
+        ).filter(
+            CounterItemStock.session_id == session_id,
+            CounterItemStock.item_name == item_name,
+            Counter.name == 'Main Stock'
+        ).scalar()
+        M = main_stock if main_stock else 0
+        
+        # Get X: Sum of available stocks in all normal counters (Counter 1-15)
+        normal_stock = db.session.query(
+            func.coalesce(func.sum(func.coalesce(CounterItemStock.available_stock, 0)), 0)
+        ).join(
+            Counter, Counter.id == CounterItemStock.counter_id
+        ).filter(
+            CounterItemStock.session_id == session_id,
+            CounterItemStock.item_name == item_name,
+            Counter.name.notin_(['Main Stock', 'Varistha Vaishnava'])
+        ).scalar()
+        X = normal_stock if normal_stock else 0
+        
+        # Get S: Available stock in "Varishta Vaishnava" counter
+        varistha_stock = db.session.query(
+            func.coalesce(func.sum(func.coalesce(CounterItemStock.available_stock, 0)), 0)
+        ).join(
+            Counter, Counter.id == CounterItemStock.counter_id
+        ).filter(
+            CounterItemStock.session_id == session_id,
+            CounterItemStock.item_name == item_name,
+            Counter.name == 'Varistha Vaishnava'
+        ).scalar()
+        S = varistha_stock if varistha_stock else 0
+        
+        # Get D: Number of devotees taken prasadam
+        stats = GlobalStats.query.filter_by(session_id=session_id).first()
+        D = stats.total_devotees_taken if stats else 0
+        
+        # Calculate formula: ((M+X)*D)/((T-S)-(M+X))
+        numerator = (M + X) * D
+        denominator = (T - S) - (M + X)
+        total_consumed = max(denominator, 0)
+        
+        if denominator > 0 and numerator >= 0:
+            estimated_count = numerator / denominator
+            estimated_count = round(estimated_count, 2)
         else:
-            estimated_available = 0
+            estimated_count = 0
 
-        warning = False
-        if remaining_devotees_to_honour_prasadam > estimated_available:
-            warning = True
+        status = 'OK'
+        remaining_devotees_to_honour_prasadam = total_expected_devotees_count - D
+        total_expected_devotees_count = session.total_expected_devotees_count if session.total_expected_devotees_count else 0
+        if estimated_count >= remaining_devotees_to_honour_prasadam + 50 :
+            status = 'success'
+        elif estimated_count >= remaining_devotees_to_honour_prasadam or numerator == 0:
+            status = 'ok'
+        else :
+            status = 'danger'
         
         items_list.append({
-            "name": name,
+            "name": item_name,
             "total_output_received": T,
             "senior_taken": S,
-            "available_stock": x,
-            "estimated_available": estimated_available,
-            "consumed": consumed_calc,
-            "warning": warning
+            "available_stock": (M+X),
+            "estimated_available": estimated_count,
+            "consumed": total_consumed,
+            "status": status
 
         })
 
     return jsonify({
         "items": items_list,
-
-        "total_devotees_taken": total_devotees_taken,
+        "total_devotees_taken": D,
         "remaining_devotees_to_honour_prasadam": remaining_devotees_to_honour_prasadam,
         "total_expected_devotees_count":total_expected_devotees_count
     })
+
+
+@app.route('/admin/reset_normal_counter_stocks', methods=['POST'])
+@admin_required
+def reset_normal_counter_stocks():
+    """
+    API to reset all available stock values to NULL for items in normal counters only.
+    This excludes Main Stock and Varistha Vaishnava counters.
+    Steps:
+    1. Get the currently active session
+    2. Find all normal counters (exclude 'Main Stock' and 'Varistha Vaishnava')
+    3. Get all CounterItemStock entries for those normal counters in the active session
+    4. Set their available_stock to NULL
+    5. Commit changes and redirect with flash message
+    """
+    try:
+        # Step 1: Get the currently active session
+        active_session = InitialPreparedSession.query.filter_by(is_active=True).first()
+        if not active_session:
+            flash("No active session found. Please activate a session first.", "warning")
+            return redirect(url_for('admin_dashboard'))
+        
+        # Step 2: Find all normal counter IDs (exclude Main Stock and Varistha Vaishnava)
+        normal_counters = Counter.query.filter(
+            Counter.name.notin_(['Main Stock', 'Varistha Vaishnava'])
+        ).all()
+        
+        if not normal_counters:
+            flash("No normal counters found in the system.", "warning")
+            return redirect(url_for('admin_dashboard'))
+        
+        normal_counter_ids = [counter.id for counter in normal_counters]
+        
+        # Step 3 & 4: Get all CounterItemStock entries for normal counters and reset to NULL
+        updated_count = db.session.query(CounterItemStock).filter(
+            CounterItemStock.counter_id.in_(normal_counter_ids),
+            CounterItemStock.session_id == active_session.id
+        ).update(
+            {CounterItemStock.available_stock: None},
+            synchronize_session=False
+        )
+        
+        # Step 5: Create notification for counter users
+        notification = StockResetNotification(
+            session_id=active_session.id,
+            reset_timestamp=datetime.utcnow()
+        )
+        db.session.add(notification)
+        
+        # Step 6: Commit changes
+        db.session.commit()
+        
+        flash(f"Successfully reset stock values for {updated_count} items across {len(normal_counters)} normal counters in session '{active_session.session_name}'. Counter users will be notified to refresh.", "success")
+        return redirect(url_for('admin_dashboard'))
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error resetting stocks: {str(e)}", "danger")
+        return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/counter/check_reset_notification/<int:counter_id>')
+@login_required
+def check_reset_notification(counter_id):
+    """API endpoint for counter dashboards to check if stocks were reset"""
+    user = db.session.get(User, session['user_id'])
+    
+    # Verify user has access to this counter
+    counter = Counter.query.get_or_404(counter_id)
+    if counter.user_id != user.id:
+        return jsonify({"notification": False, "error": "Unauthorized"}), 403
+    
+    # Skip notification check for Main Stock and Varistha Vaishnava counters
+    # since stock reset only affects normal counters
+    if counter.name in ['Main Stock', 'Varistha Vaishnava']:
+        return jsonify({"notification": False})
+    
+    active_session = InitialPreparedSession.query.filter_by(is_active=True).first()
+    
+    if not active_session:
+        return jsonify({"notification": False})
+    
+    # Check for unacknowledged reset notifications for this specific counter
+    notification = StockResetNotification.query.filter_by(
+        session_id=active_session.id
+    ).order_by(StockResetNotification.reset_timestamp.desc()).first()
+    
+    if notification and not notification.is_acknowledged_by_counter(counter_id):
+        return jsonify({
+            "notification": True,
+            "message": "Stocks have been reset by admin. Please refresh the page to see updated values.",
+            "notification_id": notification.id,
+            "reset_time": notification.reset_timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        })
+    
+    return jsonify({"notification": False})
+
+
+@app.route('/counter/acknowledge_reset/<int:notification_id>/<int:counter_id>', methods=['POST'])
+@login_required
+def acknowledge_reset(notification_id, counter_id):
+    """Acknowledge that counter has refreshed and seen the reset notification"""
+    user = db.session.get(User, session['user_id'])
+    
+    # Verify user has access to this counter
+    counter = Counter.query.get_or_404(counter_id)
+    if counter.user_id != user.id:
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    
+    notification = StockResetNotification.query.get_or_404(notification_id)
+    
+    notification.acknowledge_by_counter(counter_id)
+    db.session.commit()
+    
+    return jsonify({"success": True})
 
 
 @app.route('/admin/manage_items', methods=['GET', 'POST'])
@@ -1067,7 +1273,7 @@ def init_db():
 
         # Create all tables
         db.create_all()
-# Create default admin if none exists
+        # Create default admin if none exists
         admin_user = User.query.filter_by(is_admin=True).first()
         if not admin_user:
             admin_password = 'adminpass'  # Change to secure password or load from env
@@ -1076,6 +1282,9 @@ def init_db():
             db.session.add(admin)
             db.session.commit()
             print('Default admin user created with username: admin and password: adminpass')
+
+        # Create default counters if they don't exist
+        create_default_counters()
 
         return "Database tables deleted and recreated successfully.", 200
     except Exception as e:
@@ -1097,10 +1306,10 @@ if __name__ == '__main__':
             db.session.commit()
             print('Default admin user created with username: admin and password: adminpass')
 
+        # Create default counters if they don't exist
+        create_default_counters()
+
         # Sync initial items to counters (if you want automatic syncing on startup)
         sync_initial_items_to_counters()
-
-    app.run(debug=True)
-
 
     app.run(debug=True)

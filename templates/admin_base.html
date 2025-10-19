@@ -142,6 +142,21 @@
         opacity: 1;
         pointer-events: auto;
       }
+      /* Flash messages on mobile - no margin */
+      .flash-container {
+        margin-left: 0 !important;
+      }
+    }
+    /* Flash messages container */
+    .flash-container {
+      margin-left: 250px;
+      padding: 1rem 1.5rem;
+      padding-top: 1rem;
+    }
+    @media (max-width: 767.98px) {
+      .flash-container {
+        margin-left: 0 !important;
+      }
     }
     {% block extra_styles %}{% endblock %}
   </style>
@@ -151,17 +166,13 @@
   <!-- Flash Messages -->
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-      <div class="container-fluid">
-        <div class="row">
-          <div class="col-md-9 ms-sm-auto col-lg-10 offset-md-3 offset-lg-2 px-md-4 mt-3">
-            {% for category, message in messages %}
-              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-              </div>
-            {% endfor %}
+      <div class="flash-container">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
           </div>
-        </div>
+        {% endfor %}
       </div>
     {% endif %}
   {% endwith %}

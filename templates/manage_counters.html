@@ -159,6 +159,8 @@
       </button>
     </form>
 
+    <div class="mb-4"></div>
+
 {% endblock %}
 
 {% block extra_scripts %}
@@ -377,16 +379,6 @@
     document.addEventListener('click', function(event) {
       if (event.target.closest('.dropdown-menu')) {
         event.stopPropagation();
-      }
-    });
-
-    // Auto-refresh page 1.5 seconds after flash message appears
-    document.addEventListener('DOMContentLoaded', function() {
-      const alerts = document.querySelectorAll('.alert');
-      if (alerts.length > 0) {
-        setTimeout(function() {
-          window.location.reload();
-        }, 1500); // 1.5 seconds
       }
     });
 

@@ -65,20 +65,6 @@
           {% endfor %}
         </tbody>
       </table>
+      <div class="mb-4"></div>
     </div>
-{% endblock %}
-
-{% block extra_scripts %}
-
-<script>
-// Auto-refresh page 1.5 seconds after flash message appears
-document.addEventListener('DOMContentLoaded', function() {
-  const alerts = document.querySelectorAll('.alert');
-  if (alerts.length > 0) {
-    setTimeout(function() {
-      window.location.reload();
-    }, 1500); // 1.5 seconds
-  }
-});
-</script>
 {% endblock %}

@@ -12,12 +12,23 @@
     function addItemRow() {
       const container = document.getElementById('items-container');
       const row = document.createElement('div');
-      row.className = 'input-group mb-2';
+      row.className = 'row align-items-center mb-3';
       row.innerHTML = `
         <input type="hidden" name="item_id" value="" />
-        <input type="text" name="item_name" placeholder="Item Name" class="form-control" required />
-        <input type="number" name="total_output_received" min="0" placeholder="Total Prepared" class="form-control" required />
-        <button type="button" class="btn btn-danger" onclick="this.parentNode.remove()">Remove</button>`;
+        <div class="col-md-5">
+          <input type="text" name="item_name" placeholder="Item Name" class="form-control" required />
+        </div>
+        <div class="col-md-3">
+          <input type="number" name="total_expected_to_prepare" min="0" placeholder="Total Expected to Prepare" class="form-control" required />
+        </div>
+        <div class="col-md-3">
+          <input type="number" name="total_output_received" min="0" placeholder="Total Output Received" class="form-control" required />
+        </div>
+        <div class="col-md-1">
+          <button type="button" class="btn btn-danger" onclick="this.closest('.row').remove()">Remove
+            <i class="bi bi-x-circle"></i>
+          </button>
+        </div>`;
       container.appendChild(row);
     }
 
@@ -68,12 +79,12 @@
     />
   </div>
 
-  <!-- Header row using d-flex for alignment -->
-  <div class="d-flex mb-2 text-primary fw-bold border-bottom pb-1" style="font-size: 1rem;">
-    <div class="flex-grow-1" style="flex-basis: 40%;">Item Name</div>
-    <div class="flex-grow-1" style="flex-basis: 30%;">Total Expected to Prepare</div>
-    <div class="flex-grow-1" style="flex-basis: 25%;">Total Output Received</div>
-    <div style="width: 5%;"></div> <!-- Space for Remove button -->
+  <!-- Header row using Bootstrap grid for alignment -->
+  <div class="row text-primary fw-bold border-bottom pb-2 mb-2" style="font-size: 0.95rem;">
+    <div class="col-md-5">Item Name</div>
+    <div class="col-md-3">Total Expected to Prepare</div>
+    <div class="col-md-3">Total Output Received</div>
+    <div class="col-md-1"></div> <!-- Space for Remove button -->
   </div>
 
 <div id="items-container" class="mb-3">
@@ -113,7 +124,7 @@
         />
       </div>
       <div class="col-md-1">
-        <button type="button" class="btn btn-danger" onclick="this.parentNode.remove()">Remove
+        <button type="button" class="btn btn-danger" onclick="this.closest('.row').remove()">Remove
           <i class="bi bi-x-circle"></i>
         </button>
         </div>
@@ -124,7 +135,7 @@
 </div>
 
   <button type="button" class="btn btn-secondary mb-3" onclick="addItemRow()">Add Item</button><br/>
-  <button type="submit" class="btn btn-primary">Save Items</button>
+  <button type="submit" class="btn btn-primary mb-3">Save Items</button>
   <a href="{{ url_for('initial_prepared') }}" class="btn btn-link">Back to Sessions</a>
 </form>
 
