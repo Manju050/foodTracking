@@ -187,7 +187,7 @@ def create_default_counters():
             created_count += 1
     
     # Create special counters
-    special_counters = ['Main Stock', 'Varistha Vaishnava']
+    special_counters = ['Main Stock', 'Varishtha Vaishnava']
     for counter_name in special_counters:
         existing_counter = Counter.query.filter_by(name=counter_name).first()
         if not existing_counter:
@@ -229,8 +229,9 @@ def volunteer_required(f):
         if 'user_id' not in session:
             return redirect(url_for('login'))
         user = db.session.get(User, session['user_id'])
-        if not user or user.is_admin:
+        if not user:
             abort(403)
+        # Removed admin block - admins can now access volunteer routes
         return f(*args, **kwargs)
     return decorated_function
 
@@ -244,51 +245,20 @@ def toggle_admin_privilege(user_id):
     return redirect(url_for('manage_users'))
 
 
-@app.route('/counter_dashboard', methods=['GET', 'POST'])
-@login_required
-def counter_dashboard():
-    user = get_current_user()
-    counters = user.counters  # List of user's counters
-
-    counter_id = request.args.get('counter_id') or request.form.get('counter_id')
-    counter = None
-    items = []
-
-    if counter_id:
-        counter = Counter.query.filter(Counter.id == counter_id, Counter.user_id == user.id).first()
-        if not counter:
-            flash("Counter not found or not owned by you.", "danger")
-            return redirect(url_for('counter_dashboard'))
-
-        if request.method == 'POST':
-            # process updated available stock per item
-            for item in counter.items:
-                field_name = f"available_stock_{item.id}"
-                if field_name in request.form:
-                    try:
-                        new_stock = int(request.form[field_name])
-                        item.available_stock = new_stock
-                    except ValueError:
-                        continue
-            db.session.commit()
-            flash("Available stock updated.", "success")
-            return redirect(url_for('counter_dashboard', counter_id=counter.id))
-
-        items = counter.items  # preload items of selected counter
-
-    return render_template('counter_dashboard.html',
-                           counters=counters,
-                           counter=counter,
-                           items=items)
-
 
 @app.route('/update_available_stock/<int:counter_id>/<int:session_id>', methods=['POST'])
-@volunteer_required
+@login_required  # Changed from volunteer_required to allow admins
 def update_available_stock(counter_id, session_id):
     counter = Counter.query.get_or_404(counter_id)
+    if not counter:
+        return "Counter not found", 404
     session_obj = InitialPreparedSession.query.get_or_404(session_id)
     user = db.session.get(User, session['user_id'])
-    if counter.user_id != user.id:
+    if not user:
+        return "User doesn't exist!", 403
+    
+    # Allow admins to update any counter, volunteers only their assigned counters
+    if not user.is_admin and counter.user_id != user.id:
         return "Forbidden", 403
 
     for stock_entry in CounterItemStock.query.filter_by(counter_id=counter_id, session_id=session_id):
@@ -309,14 +279,27 @@ def update_available_stock(counter_id, session_id):
 @login_required
 def home():
     user = db.session.get(User, session['user_id'])
-    if user.is_admin:
+    if not user:
+        return "User doesn't exist!", 403
+    
+    # Allow admins to access counter dashboards if they have counters assigned
+    # or if a counter_id is specified in the URL
+    counter_id_param = request.args.get('counter_id', type=int)
+    
+    if user.is_admin and not counter_id_param:
+        # Only redirect to admin dashboard if no specific counter is requested
         return redirect(url_for('admin_dashboard'))
 
-    user_counters = user.counters
+    # For admins: show all counters, for volunteers: show only assigned counters
+    if user.is_admin:
+        user_counters = Counter.query.all()
+    else:
+        user_counters = user.counters
+        
     if not user_counters:
         return "No counters assigned to this user.", 400
 
-    counter_id = request.args.get('counter_id', type=int)
+    counter_id = counter_id_param
     counter = None
 
     if counter_id:
@@ -343,7 +326,9 @@ def home():
                            counters=user_counters,
                            counter=counter,
                            items=items,
-                           active_session=active_session,no_active_session=no_active_session)
+                           active_session=active_session,
+                           no_active_session=no_active_session,
+                           username=user.username)
 
 @app.route('/admin/delete_session/<int:session_id>', methods=['POST'])
 @admin_required
@@ -453,22 +438,6 @@ def update_total_devotees():
     return redirect(url_for('admin_dashboard'))
 
 
-
-@app.route('/update_available/<int:item_id>', methods=['POST'])
-@volunteer_required
-def update_available(item_id):
-    item = Item.query.get(item_id)
-    user = db.session.get(User, session['user_id'])
-    if not item or item.counter_id != user.counter_id:
-        return "Forbidden", 403
-    try:
-        value = int(request.form['available_stock'])
-    except ValueError:
-        return 'Invalid value', 400
-    item.available_stock = value
-    db.session.commit()
-    return redirect(url_for('home'))
-
 @app.route('/admin', methods=['GET', 'POST'])
 @admin_required
 def admin_dashboard():
@@ -573,7 +542,7 @@ def admin_api_data():
         # T - "Total output received" of the item
         # M - available stock in "Main Stock" counter
         # X - Sum of available stocks in all normal counters
-        # S - available stock in "Varishta Vaishnava" counter
+        # S - available stock in "Varishtha Vaishnava" counter
         # D - number of devotees taken prasadam in normal counters
         # Returns: estimated number of devotees that can be served with remaining stock
         item_name = ip_item.name
@@ -603,21 +572,21 @@ def admin_api_data():
         ).filter(
             CounterItemStock.session_id == session_id,
             CounterItemStock.item_name == item_name,
-            Counter.name.notin_(['Main Stock', 'Varistha Vaishnava'])
+            Counter.name.notin_(['Main Stock', 'Varishtha Vaishnava'])
         ).scalar()
         X = normal_stock if normal_stock else 0
         
-        # Get S: Available stock in "Varishta Vaishnava" counter
-        varistha_stock = db.session.query(
+        # Get S: Available stock in "Varishtha Vaishnava" counter
+        Varishtha_stock = db.session.query(
             func.coalesce(func.sum(func.coalesce(CounterItemStock.available_stock, 0)), 0)
         ).join(
             Counter, Counter.id == CounterItemStock.counter_id
         ).filter(
             CounterItemStock.session_id == session_id,
             CounterItemStock.item_name == item_name,
-            Counter.name == 'Varistha Vaishnava'
+            Counter.name == 'Varishtha Vaishnava'
         ).scalar()
-        S = varistha_stock if varistha_stock else 0
+        S = Varishtha_stock if Varishtha_stock else 0
         
         # Get D: Number of devotees taken prasadam
         stats = GlobalStats.query.filter_by(session_id=session_id).first()
@@ -668,10 +637,10 @@ def admin_api_data():
 def reset_normal_counter_stocks():
     """
     API to reset all available stock values to NULL for items in normal counters only.
-    This excludes Main Stock and Varistha Vaishnava counters.
+    This excludes Main Stock and Varishtha Vaishnava counters.
     Steps:
     1. Get the currently active session
-    2. Find all normal counters (exclude 'Main Stock' and 'Varistha Vaishnava')
+    2. Find all normal counters (exclude 'Main Stock' and 'Varishtha Vaishnava')
     3. Get all CounterItemStock entries for those normal counters in the active session
     4. Set their available_stock to NULL
     5. Commit changes and redirect with flash message
@@ -683,9 +652,9 @@ def reset_normal_counter_stocks():
             flash("No active session found. Please activate a session first.", "warning")
             return redirect(url_for('admin_dashboard'))
         
-        # Step 2: Find all normal counter IDs (exclude Main Stock and Varistha Vaishnava)
+        # Step 2: Find all normal counter IDs (exclude Main Stock and Varishtha Vaishnava)
         normal_counters = Counter.query.filter(
-            Counter.name.notin_(['Main Stock', 'Varistha Vaishnava'])
+            Counter.name.notin_(['Main Stock', 'Varishtha Vaishnava'])
         ).all()
         
         if not normal_counters:
@@ -722,20 +691,25 @@ def reset_normal_counter_stocks():
         return redirect(url_for('admin_dashboard'))
 
 
-@app.route('/counter/check_reset_notification/<int:counter_id>')
+@app.route('/counter/check_reset_notification/<int:counter_id>/<int:user_session_id>')
 @login_required
-def check_reset_notification(counter_id):
+def check_reset_notification(counter_id, user_session_id):
     """API endpoint for counter dashboards to check if stocks were reset"""
     user = db.session.get(User, session['user_id'])
+    if not user:
+        return jsonify({"notification": False, "error": "Unauthorized"}), 403
     
     # Verify user has access to this counter
     counter = Counter.query.get_or_404(counter_id)
-    if counter.user_id != user.id:
+    if not counter:
+        return jsonify({"notification": False, "error": "Counter not found"}), 404
+    # Allow admins to access any counter, volunteers only their assigned counters
+    if not user.is_admin and counter.user_id != user.id:
         return jsonify({"notification": False, "error": "Unauthorized"}), 403
     
-    # Skip notification check for Main Stock and Varistha Vaishnava counters
+    # Skip notification check for Main Stock and Varishtha Vaishnava counters
     # since stock reset only affects normal counters
-    if counter.name in ['Main Stock', 'Varistha Vaishnava']:
+    if counter.name in ['Main Stock', 'Varishtha Vaishnava']:
         return jsonify({"notification": False})
     
     active_session = InitialPreparedSession.query.filter_by(is_active=True).first()
@@ -743,7 +717,18 @@ def check_reset_notification(counter_id):
     if not active_session:
         return jsonify({"notification": False})
     
-    # Check for unacknowledged reset notifications for this specific counter
+    # CRITICAL FIX: Check if user's session matches current active session
+    # This prevents showing notifications from a different session
+    if active_session.id != user_session_id:
+        return jsonify({
+            "notification": False,
+            "session_changed": True,
+            "message": f"Active session has changed to '{active_session.session_name}'. Please refresh to load the new session.",
+            "new_session_id": active_session.id,
+            "new_session_name": active_session.session_name
+        })
+    
+    # Check for unacknowledged reset notifications for THIS session only
     notification = StockResetNotification.query.filter_by(
         session_id=active_session.id
     ).order_by(StockResetNotification.reset_timestamp.desc()).first()
@@ -764,10 +749,15 @@ def check_reset_notification(counter_id):
 def acknowledge_reset(notification_id, counter_id):
     """Acknowledge that counter has refreshed and seen the reset notification"""
     user = db.session.get(User, session['user_id'])
+    if not user:
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
     
     # Verify user has access to this counter
     counter = Counter.query.get_or_404(counter_id)
-    if counter.user_id != user.id:
+    if not counter:
+        return jsonify({"notification": False, "error": "Counter not found"}), 404
+    # Allow admins to access any counter, volunteers only their assigned counters
+    if not user.is_admin and counter.user_id != user.id:
         return jsonify({"success": False, "error": "Unauthorized"}), 403
     
     notification = StockResetNotification.query.get_or_404(notification_id)
@@ -777,34 +767,6 @@ def acknowledge_reset(notification_id, counter_id):
     
     return jsonify({"success": True})
 
-
-@app.route('/admin/manage_items', methods=['GET', 'POST'])
-@admin_required
-def manage_items():
-    if request.method == 'POST':
-        name = request.form['item_name'].strip()
-        total = request.form['total_output_received']
-        if name and total.isdigit():
-            # Add or update global item totals here
-            items = Item.query.filter_by(name=name).all()
-            if not items:
-                # Create one item with counter_id null or zero to hold total info (optional design)
-                # or create items for all counters as needed
-                pass
-            else:
-                for item in items:
-                    item.total_output_received = int(total)
-            db.session.commit()
-            return redirect(url_for('manage_items'))
-
-    # Show all unique item names with totals
-    items_all = Item.query.all()
-    items_dict = {}
-    for i in items_all:
-        if i.name not in items_dict:
-            items_dict[i.name] = i.total_output_received
-
-    return render_template('manage_items.html', items=items_dict)
 
 @app.route('/admin/save_snapshot', methods=['POST'])
 @admin_required
@@ -1059,6 +1021,8 @@ def get_counter_items(counter_id):
 @admin_required
 def delete_counter(counter_id):
     counter = Counter.query.get_or_404(counter_id)
+    if not counter:
+        return "Counter not found", 404
     
     try:
         db.session.delete(counter)
@@ -1104,7 +1068,34 @@ def manage_counters():
 
     counters = Counter.query.order_by(Counter.id).all()  # Order by ID to prevent shuffling
     users = User.query.order_by(User.username).all()  # Sort users alphabetically
-    return render_template('manage_counters.html', counters=counters, users=users, session_active=bool(active_session), current_session_name=current_session_name)
+    
+    # Check if all items are null for each counter in the active session
+    counters_null_status = {}
+    if active_session:
+        for counter in counters:
+            items = CounterItemStock.query.filter_by(
+                counter_id=counter.id,
+                session_id=active_session.id
+            ).all()
+            
+            if not items:
+                # No items for this counter in active session
+                counters_null_status[counter.id] = True
+            else:
+                # Check if ALL items have null available_stock
+                all_null = all(item.available_stock is None for item in items)
+                counters_null_status[counter.id] = all_null
+    else:
+        # No active session, set all to True (or could be N/A)
+        for counter in counters:
+            counters_null_status[counter.id] = True
+    
+    return render_template('manage_counters.html', 
+                         counters=counters, 
+                         users=users, 
+                         session_active=bool(active_session), 
+                         current_session_name=current_session_name,
+                         counters_null_status=counters_null_status)
 
 @app.route('/admin/update_multiple_counter_users', methods=['POST'])
 @admin_required
@@ -1286,6 +1277,7 @@ def init_db():
         # Create default counters if they don't exist
         create_default_counters()
 
+        sync_initial_items_to_counters()
         return "Database tables deleted and recreated successfully.", 200
     except Exception as e:
         return f"Error initializing database: {str(e)}", 500

@@ -185,7 +185,7 @@
         </form>
         
         <form method="post" action="{{ url_for('reset_normal_counter_stocks') }}" 
-              onsubmit="return confirm('Are you sure you want to reset all normal counter stocks to NULL? This will clear stock values for Counter 1-15 only (Main Stock and Varistha Vaishnava will not be affected).');"
+              onsubmit="return confirm('Are you sure you want to reset all normal counter stocks to NULL? This will clear stock values for Counter 1-15 only (Main Stock and Varishtha Vaishnava will not be affected).');"
               class="w-100 w-md-auto">
           <button type="submit" class="btn btn-danger w-100 w-md-auto" style="font-size: 0.95rem; padding: 0.5rem 1rem;">
             <i class="bi bi-arrow-clockwise me-1"></i> Reset Normal Counter Stocks
@@ -274,7 +274,7 @@
               <tr>
                 <th>Item Name</th>
                 <th class="text-center">Total Prepared (T)</th>
-                <th class="text-center">Varishta Vaishnava Taken (S)</th>
+                <th class="text-center">Varishtha Vaishnava Taken (S)</th>
                 <th class="text-center">Available at Counters (M+X)</th>
                 <th class="text-center">Total Consumed (C)</th>
                 <th class="text-center">Estimated Remaining Count</th>
@@ -301,7 +301,7 @@
                 </td>
 
                 <td class="text-center available-stock">{{ item.available_stock }}</td>
-                <td class="text-center consumed">{{ item.consumed }}</td>  <!-- New cell for consumed -->
+                <td class="text-center consumed">{{ item.consumed }}</td>
 
                 <td class="text-center estimated-available">{{ item.estimated_available }}</td>
               </tr>

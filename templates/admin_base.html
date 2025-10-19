@@ -271,6 +271,62 @@
           }
         });
       });
+      
+      // Auto-dismiss flash messages with different timings based on type
+      const flashContainer = document.querySelector('.flash-container');
+      if (!flashContainer) return; // Exit if no flash messages
+      
+      const alerts = flashContainer.querySelectorAll('.alert');
+      if (!alerts) return;
+      // Define timings for different alert types (in milliseconds)
+      const alertTimings = {
+        'alert-success': 2000,   // Success messages - 2 seconds (quick confirmation)
+        'alert-info': 3000,      // Info messages - 3 seconds
+        'alert-warning': 4000,   // Warning messages - 4 seconds (more time to read)
+        'alert-danger': 5000     // Error messages - 5 seconds (important, need more time)
+      };
+      alerts.forEach(alert => {
+        // Determine the timing based on alert type
+        let dismissTime = 3000; // Default 3 seconds
+        for (const [alertClass, timing] of Object.entries(alertTimings)) {
+          if (alert.classList.contains(alertClass)) {
+            dismissTime = timing;
+            break;
+          }
+        }
+        
+        // Set timeout to auto-dismiss
+        const timerId = setTimeout(() => {
+          // Check if alert still exists (user might have manually closed it)
+          if (alert && alert.parentElement) {
+            const bsAlert = new bootstrap.Alert(alert);
+            bsAlert.close();
+            
+            // After Bootstrap's animation completes, check if container is empty
+            setTimeout(() => {
+              const remainingAlerts = flashContainer.querySelectorAll('.alert');
+              if (remainingAlerts.length === 0) {
+                flashContainer.remove(); // Remove empty container to collapse space
+              }
+            }, 200); // Wait for Bootstrap's fade animation (150ms) plus buffer
+          }
+        }, dismissTime);
+        
+        // Clear timer if user manually closes the alert
+        const closeButton = alert.querySelector('.btn-close');
+        if (closeButton) {
+          closeButton.addEventListener('click', () => {
+            clearTimeout(timerId);
+            // Check if container should be removed after manual close
+            setTimeout(() => {
+              const remainingAlerts = flashContainer.querySelectorAll('.alert');
+              if (remainingAlerts.length === 0 && flashContainer.parentElement) {
+                flashContainer.remove();
+              }
+            }, 200);
+          });
+        }
+      });
     });
   </script>
   {% block extra_scripts %}{% endblock %}

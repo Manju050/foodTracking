@@ -36,6 +36,13 @@
         <i class="bi bi-box-arrow-right"></i> Logout
       </a>
     </div>
+    
+    <!-- Logged in user info -->
+    <div class="text-muted mb-3" style="font-size: 1.1rem;">
+        <i class="bi bi-person-circle me-1"></i>
+        Logged in as: <strong>{{ username }}</strong>
+    </div>
+    
 {% if active_session %}
   <div class="alert alert-info">
     Current Active Session: <strong>{{ active_session.session_name }}</strong>  </div>
@@ -75,7 +82,7 @@
         <td>{{ item.item_name }}</td>
         <!-- <td>{{ item.available_stock or 0 }}</td> -->
         <td>
-          {% if counter.name == 'Main Stock' or counter.name == 'Varistha Vaishnava' %}
+          {% if counter.name == 'Main Stock' or counter.name == 'Varishtha Vaishnava' %}
           <!-- For specific counter: numeric input from 0 to 10000 -->
           <input 
             type="number" 
@@ -142,22 +149,30 @@
     // Get current counter ID and name from the page
     const currentCounterId = {{ counter.id if counter else 'null' }};
     const currentCounterName = {{ counter.name|tojson if counter else 'null' }};
+    const currentSessionId = {{ active_session.id if active_session else 'null' }};
     
-    // Only enable polling for normal counters (not Main Stock or Varistha Vaishnava)
-    const isSpecialCounter = currentCounterName === 'Main Stock' || currentCounterName === 'Varistha Vaishnava';
+    // Only enable polling for normal counters (not Main Stock or Varishtha Vaishnava)
+    const isSpecialCounter = currentCounterName === 'Main Stock' || currentCounterName === 'Varishtha Vaishnava';
     
     // Poll for stock reset notifications every 5 seconds (only for normal counters)
     let notificationCheckInterval;
     let currentNotificationId = null;
 
     function checkForResetNotification() {
-      if (!currentCounterId) {
-        return; // No counter selected, don't check
+      if (!currentCounterId || !currentSessionId) {
+        return; // No counter or session selected, don't check
       }
       
-      fetch('/counter/check_reset_notification/' + currentCounterId)
+      fetch('/counter/check_reset_notification/' + currentCounterId + '/' + currentSessionId)
         .then(response => response.json())
         .then(data => {
+          // Handle session change notification (yellow banner)
+          if (data.session_changed) {
+            showSessionChangeBanner(data);
+            return;
+          }
+          
+          // Handle stock reset notification (red banner)
           if (data.notification && currentNotificationId !== data.notification_id) {
             currentNotificationId = data.notification_id;
             showResetNotificationBanner(data);
@@ -192,6 +207,38 @@
       `;
 
       document.body.insertBefore(banner, document.body.firstChild);
+    }
+
+    function showSessionChangeBanner(data) {
+      // Remove any existing session change banner
+      const existingBanner = document.getElementById('session-change-banner');
+      if (existingBanner) {
+        existingBanner.remove();
+      }
+      // Create session change banner with yellow/warning styling
+      const banner = document.createElement('div');
+      banner.id = 'session-change-banner';
+      banner.className = 'alert alert-warning alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3 shadow-lg';
+      banner.style.cssText = 'z-index: 9999; width: 75%; max-width: 500px; left: 50%; transform: translateX(-50%);';
+      banner.innerHTML = `
+        <div class="d-flex flex-column align-items-center text-center">
+          <div class="mb-2">
+            <i class="bi bi-info-circle-fill me-2" style="font-size: 1.5rem;"></i>
+            <strong style="font-size: 1.1rem;">Session Changed!</strong>
+          </div>
+          <p class="mb-3 small">${data.message}</p>
+          <button type="button" class="btn btn-warning btn-sm w-100" onclick="window.location.reload()" style="max-width: 200px;">
+            <i class="bi bi-arrow-clockwise me-1"></i> Refresh Now
+          </button>
+        </div>
+      `;
+
+      document.body.insertBefore(banner, document.body.firstChild);
+      
+      // Stop checking for further notifications since session has changed
+      if (notificationCheckInterval) {
+        clearInterval(notificationCheckInterval);
+      }
     }
 
     function refreshPage(notificationId) {
