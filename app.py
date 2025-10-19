@@ -1314,7 +1314,34 @@ def init_db():
         return "Database tables deleted and recreated successfully.", 200
     except Exception as e:
         return f"Error initializing database: {str(e)}", 500
+        
+@app.route('/initialise_database_tables', methods=['POST','GET'])
+def initialise_database_tables():
+    try:
+        # Drop all tables with cascade
+        db.session.execute(text('DROP SCHEMA public CASCADE;'))
+        db.session.execute(text('CREATE SCHEMA public;'))
+        db.session.commit()
 
+        # Create all tables
+        db.create_all()
+        # Create default admin if none exists
+        admin_user = User.query.filter_by(is_admin=True).first()
+        if not admin_user:
+            admin_password = 'adminpass'  # Change to secure password or load from env
+            admin = User(username='admin', is_admin=True)
+            admin.set_password(admin_password)
+            db.session.add(admin)
+            db.session.commit()
+            print('Default admin user created with username: admin and password: adminpass')
+
+        # Create default counters if they don't exist
+        create_default_counters()
+
+        sync_initial_items_to_counters()
+        return "Database tables deleted and recreated successfully.", 200
+    except Exception as e:
+        return f"Error initializing database: {str(e)}", 500
 
 
 if __name__ == '__main__':
