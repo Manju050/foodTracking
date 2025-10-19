@@ -134,7 +134,7 @@ window.onload = () => addItemRow();
 
   <div class="mb-3">
     <label for="total_expected_devotees_count" class="form-label">Enter Total Expected Devotees Count</label>
-    <input type="number" name="total_expected_devotees_count" id="total_expected_devotees_count" class="form-control" required />
+    <input type="number" name="total_expected_devotees_count" id="total_expected_devotees_count" class="form-control" />
   </div>
 
   <div class="mb-3">
@@ -180,8 +180,6 @@ window.onload = () => addItemRow();
               <th>Session Name</th>
               <th>Created At</th>
               <th>Status</th>
-              <th>Actions</th> <!-- new column -->
-
             </tr>
           </thead>
 <tbody>
@@ -205,11 +203,7 @@ window.onload = () => addItemRow();
           </form>
         {% endif %}
       </td>
-      <td onclick="event.stopPropagation()"> 
-        <a href="{{ url_for('manage_session_items', session_id=session.id) }}" class="btn btn-sm btn-primary">
-          <i class="bi bi-pencil-square me-1"></i> Edit
-        </a>
-      </td>
+      
     </tr>
   {% else %}
     <tr>
@@ -226,51 +220,62 @@ window.onload = () => addItemRow();
 {% endblock %}
 
 {% block extra_scripts %}
-  <script>
-  async function showSessionDetails(sessionId) {
-    const modal = new bootstrap.Modal(document.getElementById('sessionDetailsModal'));
-    const modalBody = document.getElementById('sessionDetailsBody');
+<script>
+async function showSessionDetails(sessionId) {
+  const modal = new bootstrap.Modal(document.getElementById('sessionDetailsModal'));
+  const modalBody = document.getElementById('sessionDetailsBody');
 
-    // Show loading text
-    modalBody.innerHTML = '<p>Loading session items...</p>';
-    modal.show();
+  // Show loading text
+  modalBody.innerHTML = '<p>Loading session items...</p>';
+  modal.show();
 
-    try {
-      const response = await fetch(`/admin/session_items/${sessionId}`);
-      if (!response.ok) throw new Error('Failed to load session items.');
-      const data = await response.json();
+  try {
+    const response = await fetch(`/admin/session_items/${sessionId}`);
+    if (!response.ok) throw new Error('Failed to load session items.');
+    const data = await response.json();
     const { total_expected_devotees_count, items } = data;
 
-      if (items.length === 0) {
-        modalBody.innerHTML = '<p>No items found for this session.</p>';
-        return;
-      }
-          let html = `<p><strong>Total Expected Devotees Count:</strong> ${total_expected_devotees_count ?? 'N/A'}</p>`;
-
-
-      // Build HTML table with items
-      html += `<table class="table table-bordered">
-                    <thead>
-                      <tr>
-                        <th>Item Name</th>
-                        <th>Total Expected</th>
-                        <th>Total Output</th>
-                      </tr>
-                    </thead><tbody>`;
-
-      items.forEach(item => {
-        html += `<tr>
-                  <td>${item.name}</td>
-                  <td>${item.total_expected_to_prepare}</td>
-                  <td>${item.total_output_received}</td>
-                 </tr>`;
-      });
-      html += '</tbody></table>';
-
-      modalBody.innerHTML = html;
-    } catch (error) {
-      modalBody.innerHTML = `<p class="text-danger">${error.message}</p>`;
+    if (items.length === 0) {
+      modalBody.innerHTML = '<p>No items found for this session.</p>';
+      return;
     }
+
+    // Build HTML with Edit button after the "Total Expected Devotees Count"
+    let html = `
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <p class="mb-0"><strong>Total Expected Devotees Count:</strong> ${total_expected_devotees_count ?? 'N/A'}</p>
+        <div onclick="event.stopPropagation()">
+          <a href="/admin/manage_session_items/${sessionId}" class="btn btn-sm btn-primary">
+            <i class="bi bi-pencil-square me-1"></i> Edit
+          </a>
+        </div>
+      </div>
+    `;
+
+    // Build HTML table with items
+    html += `<table class="table table-bordered">
+                <thead>
+                  <tr>
+                    <th>Item Name</th>
+                    <th>Total Expected To Prepare</th>
+                    <th>Total Output Received</th>
+                  </tr>
+                </thead><tbody>`;
+
+    items.forEach(item => {
+      html += `<tr>
+                <td>${item.name}</td>
+                <td>${item.total_expected_to_prepare}</td>
+                <td>${item.total_output_received}</td>
+               </tr>`;
+    });
+    html += '</tbody></table>';
+
+    modalBody.innerHTML = html;
+  } catch (error) {
+    modalBody.innerHTML = `<p class="text-danger">${error.message}</p>`;
   }
-  </script>
+}
+</script>
 {% endblock %}
+

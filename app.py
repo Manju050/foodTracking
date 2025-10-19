@@ -301,12 +301,17 @@ def home():
 def delete_session(session_id):
     session_obj = InitialPreparedSession.query.get_or_404(session_id)
 
+    # Check if the session is currently active
+    if session_obj.is_active:  # assuming your model has an 'is_active' boolean field
+        flash(f'Cannot delete active session "{session_obj.session_name}". Please deactivate it first.', 'warning')
+        return redirect(url_for('initial_prepared'))
+
     # Delete all counter_item_stock entries associated with this session
-    db.session.query(CounterItemStock).filter(CounterItemStock.session_id == session_obj.id).delete(synchronize_session=False)
+    db.session.query(CounterItemStock).filter(
+        CounterItemStock.session_id == session_obj.id
+    ).delete(synchronize_session=False)
 
-    # If you also want to delete InitialPreparedItem(s) linked to session, cascade should handle it, else delete explicitly.
-
-    # Now delete the session itself
+    # Delete the session itself
     db.session.delete(session_obj)
     db.session.commit()
 
@@ -632,8 +637,8 @@ def save_snapshot():
     # Fetch current session total devotees taken from GlobalStats
     stats = GlobalStats.query.filter_by(session_id=active_session.id).first()
     total_devotees_taken = stats.total_devotees_taken if stats else 0
-
-
+    total_devotees_count = active_session.total_expected_devotees_count if active_session.total_expected_devotees_count else 0
+    remaining_devotees_to_honour_prasadam = total_devotees_count - total_devotees_taken
     # Generate safe filename
     def sanitize_filename(s):
         return re.sub(r'[^a-zA-Z0-9-_]', '_', s)
@@ -653,14 +658,14 @@ def save_snapshot():
     
     # Use in filename
     safe_session_name = sanitize_filename(active_session.session_name or "session")
-    filename = f"{safe_session_name}_{total_devotees_taken}_prasadam_count_{timestamp_str}.csv"
+    filename = f"{safe_session_name}_honoured_prasadam_count_{total_devotees_taken}_{timestamp_str}.csv"
 
 
     output = StringIO()
     writer = csv.writer(output)
     writer.writerow([
         'Item Name', 'Total Prepared (T)', 'Senior Taken (S)', 'Available Stock (x)', 
-        'Consumed (T - S - x)', 'Total Devotees Taken Prasadam', 'Estimated Available for Serving'
+        'Consumed (T - S - x)','Total Devotees count' ,'Total Devotees Taken Prasadam','Remaining devotees to honour prasadam' ,'Estimated Available for Serving'
     ])
 
     # Use all item names encountered in either prepared or stock data
@@ -676,7 +681,7 @@ def save_snapshot():
         denominator = max(T - S - x, 1)
         est_available = int(x * total_devotees_taken / denominator) if denominator > 0 and total_devotees_taken > 0 else x
 
-        writer.writerow([name, T, S, x, consumed, total_devotees_taken, est_available])
+        writer.writerow([name, T, S, x, consumed,total_devotees_count,total_devotees_taken,remaining_devotees_to_honour_prasadam ,est_available])
 
     # Save feeding session snapshot in DB linked to current session
     snapshot = PreviousSavedSessions(data=output.getvalue(), session_id=active_session.id,filename=filename,timestamp=timestamp_str)
@@ -684,16 +689,16 @@ def save_snapshot():
     db.session.commit()
 
     flash(f"Snapshot saved for session '{active_session.session_name}'.", "success")
-    return redirect(url_for('previous_sessions'))
+    return redirect(url_for('saved_sessions'))
 
-@app.route('/admin/previous_sessions')
+@app.route('/admin/saved_sessions')
 @admin_required
-def previous_sessions():
+def saved_sessions():
     sessions = PreviousSavedSessions.query.order_by(PreviousSavedSessions.timestamp.desc()).all()
-    return render_template('previous_sessions.html', sessions=sessions)
+    return render_template('saved_sessions.html', sessions=sessions)
 
 
-@app.route('/admin/previous_sessions/download/<int:session_id>')
+@app.route('/admin/saved_sessions/download/<int:session_id>')
 @admin_required
 def download_feeding_session(session_id):
     session_record = PreviousSavedSessions.query.get_or_404(session_id)
@@ -711,6 +716,15 @@ def download_feeding_session(session_id):
         as_attachment=True,
         download_name=filename
     )
+
+@app.route('/admin/saved_sessions/delete/<int:snapshot_id>', methods=['POST'])
+@admin_required
+def delete_feeding_session(snapshot_id):
+    snapshot = PreviousSavedSessions.query.get_or_404(snapshot_id)
+    db.session.delete(snapshot)
+    db.session.commit()
+    flash(f'Snapshot "{snapshot.filename}" deleted successfully.', 'success')
+    return redirect(url_for('saved_sessions'))
 
 @app.route('/select_session', methods=['GET', 'POST'])
 @login_required
@@ -801,15 +815,6 @@ def session_items(session_id):
     }
 
     return jsonify(response)
-
-@app.route('/admin/delete_session_item/<int:item_id>', methods=['POST'])
-@admin_required
-def delete_session_item(item_id):
-    ip_item = InitialPreparedItem.query.get_or_404(item_id)
-    session_id = ip_item.session_id
-    db.session.delete(ip_item)
-    db.session.commit()
-    return redirect(url_for('manage_session_items', session_id=session_id))
 
 
 @app.route('/admin/sync_items')
