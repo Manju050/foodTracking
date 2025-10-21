@@ -71,14 +71,18 @@
   <table class="table table-bordered table-hover">
     <thead class="table-light">
       <tr>
+        <th style="width: 30px;"></th>
         <th>Item Name</th>
         <!-- <th>Available Stock With Me</th> -->
         <th>Current Available Stock</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="sortable-items">
       {% for item in items %}
-      <tr>
+      <tr draggable="true" data-item-id="{{ item.id }}" class="draggable-row">
+        <td class="text-center drag-handle" style="cursor: grab; vertical-align: middle;">
+          <div class="custom-grip-icon"></div>
+        </td>
         <td>{{ item.item_name }}</td>
         <!-- <td>{{ item.available_stock or 0 }}</td> -->
         <td>
@@ -268,7 +272,173 @@
         clearInterval(notificationCheckInterval);
       }
     });
+
+    // ===== Drag and Drop Functionality =====
+    let draggedRow = null;
+    const tbody = document.getElementById('sortable-items');
+    if (tbody) {
+      // Add event listeners to all draggable rows
+      const rows = tbody.querySelectorAll('.draggable-row');
+      rows.forEach(row => {
+        row.addEventListener('dragstart', handleDragStart);
+        row.addEventListener('dragover', handleDragOver);
+        row.addEventListener('drop', handleDrop);
+        row.addEventListener('dragend', handleDragEnd);
+        row.addEventListener('dragenter', handleDragEnter);
+        row.addEventListener('dragleave', handleDragLeave);
+      });
+    }
+
+    function handleDragStart(e) {
+      draggedRow = this;
+      this.style.opacity = '0.4';
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/html', this.innerHTML);
+      // Change cursor to grabbing on drag handle
+      const dragHandle = this.querySelector('.drag-handle');
+      if (dragHandle) {
+        dragHandle.style.cursor = 'grabbing';
+      }
+    }
+
+    function handleDragOver(e) {
+      if (e.preventDefault) {
+        e.preventDefault();
+      }
+      e.dataTransfer.dropEffect = 'move';
+      return false;
+    }
+
+    function handleDragEnter(e) {
+      if (this !== draggedRow) {
+        this.classList.add('drag-over');
+      }
+    }
+
+    function handleDragLeave(e) {
+      this.classList.remove('drag-over');
+    }
+
+    function handleDrop(e) {
+      if (e.stopPropagation) {
+        e.stopPropagation();
+      }
+      if (draggedRow !== this) {
+        // Get the parent tbody
+        const parent = this.parentNode;
+        // Determine if we should insert before or after
+        const bounding = this.getBoundingClientRect();
+        const offset = bounding.y + (bounding.height / 2);
+        if (e.clientY < offset) {
+          parent.insertBefore(draggedRow, this);
+        } else {
+          parent.insertBefore(draggedRow, this.nextSibling);
+        }
+      }
+      this.classList.remove('drag-over');
+      return false;
+    }
+
+    function handleDragEnd(e) {
+      this.style.opacity = '1';
+      // Reset cursor on drag handle
+      const dragHandle = this.querySelector('.drag-handle');
+      if (dragHandle) {
+        dragHandle.style.cursor = 'grab';
+      }
+      // Remove drag-over class from all rows
+      const rows = document.querySelectorAll('.draggable-row');
+      rows.forEach(row => {
+        row.classList.remove('drag-over');
+      });
+      // Save the new order to backend
+      saveItemOrder();
+    }
+
+    function saveItemOrder() {
+      // Get current order of item names from the table
+      const rows = document.querySelectorAll('#sortable-items .draggable-row');
+      const itemNames = [];
+      rows.forEach(row => {
+        // Get item name from the second column (first is drag handle)
+        const itemNameCell = row.querySelector('td:nth-child(2)');
+        if (itemNameCell) {
+          itemNames.push(itemNameCell.textContent.trim());
+        }
+      });
+      // Send to backend
+      fetch('/save_item_order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          item_order: itemNames
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          console.log('Item order saved successfully');
+        } else {
+          console.error('Failed to save item order:', data.error);
+        }
+      })
+      .catch(error => {
+        console.error('Error saving item order:', error);
+      });
+    }
   </script>
+
+  <style>
+    /* Drag and drop styles */
+    .draggable-row {
+      cursor: move;
+      transition: background-color 0.2s;
+    }
+
+    .draggable-row:hover .drag-handle {
+      color: #0d6efd !important;
+    }
+
+    .drag-handle:hover {
+      transform: scale(1.1);
+      transition: transform 0.1s;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing !important;
+    }
+
+    .draggable-row.drag-over {
+      background-color: #e7f3ff !important;
+      border-top: 2px solid #0d6efd;
+    }
+
+    /* Custom 3x2 grip icon */
+    .custom-grip-icon {
+      display: inline-block;
+      width: 10px;
+      height: 14px;
+      background-image: 
+        radial-gradient(circle, #6c757d 1.1px, transparent 1.1px),
+        radial-gradient(circle, #6c757d 1.1px, transparent 1.1px);
+      background-size: 5px 5px;
+      background-position: 0 0, 5px 0;
+      background-repeat: repeat-y;
+    }
+
+    .draggable-row:hover .custom-grip-icon {
+      background-image: 
+        radial-gradient(circle, #0d6efd 1.1px, transparent 1.1px),
+        radial-gradient(circle, #0d6efd 1.1px, transparent 1.1px);
+    }
+
+    .drag-handle:hover .custom-grip-icon {
+      transform: scale(1.1);
+      transition: transform 0.1s;
+    }
+  </style>
 </body>
 
 {% endif %}
