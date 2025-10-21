@@ -16,7 +16,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
 
-POSTGRES_LOCAL_URI = 'postgresql://lsandadi@localhost/prasadamtrackingdb'
+POSTGRES_LOCAL_URI = 'postgresql://manju-17840@localhost/postgres'
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or POSTGRES_LOCAL_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -792,45 +792,22 @@ def acknowledge_reset(notification_id, counter_id):
     
     return jsonify({"success": True})
 
-
+        
 @app.route('/admin/save_snapshot', methods=['POST'])
 @admin_required
 def save_snapshot():
     # Get the currently active session
-    active_session = InitialPreparedSession.query.filter_by(is_active=True).first()
-    if not active_session:
+    session = InitialPreparedSession.query.filter_by(is_active=True).first()
+    if not session:
         flash("No active session found. Please activate a session first.", "warning")
         return redirect(url_for('admin_dashboard'))
 
-    # Aggregate total_output_received, available_stock grouped by item_name
-    from sqlalchemy import func
 
-    # Sum total_output_received from InitialPreparedItem to get session totals per item
-    prepared_agg = db.session.query(
-        InitialPreparedItem.name,
-        func.coalesce(func.sum(InitialPreparedItem.total_output_received), 0)
-    ).filter(
-        InitialPreparedItem.session_id == active_session.id
-    ).group_by(
-        InitialPreparedItem.name
-    ).all()
-    prepared_map = {name: total for name, total in prepared_agg}
-
-    # Sum available_stock from CounterItemStock per item for this session
-    stock_agg = db.session.query(
-        CounterItemStock.item_name,
-        func.coalesce(func.sum(CounterItemStock.available_stock), 0)
-    ).filter(
-        CounterItemStock.session_id == active_session.id
-    ).group_by(
-        CounterItemStock.item_name
-    ).all()
-    stock_map = {name: total for name, total in stock_agg}
 
     # Fetch current session total devotees taken from GlobalStats
-    stats = GlobalStats.query.filter_by(session_id=active_session.id).first()
+    stats = GlobalStats.query.filter_by(session_id=session.id).first()
     total_devotees_taken = stats.total_devotees_taken if stats else 0
-    total_devotees_count = active_session.total_expected_devotees_count if active_session.total_expected_devotees_count else 0
+    total_devotees_count = session.total_expected_devotees_count if session.total_expected_devotees_count else 0
     remaining_devotees_to_honour_prasadam = total_devotees_count - total_devotees_taken
     # Generate safe filename
     def sanitize_filename(s):
@@ -850,38 +827,114 @@ def save_snapshot():
     timestamp_str = ist_now.strftime("%Y-%m-%d_%H:%M:%S")
     
     # Use in filename
-    safe_session_name = sanitize_filename(active_session.session_name or "session")
+    safe_session_name = sanitize_filename(session.session_name or "session")
     filename = f"{safe_session_name}_honoured_prasadam_count_{total_devotees_taken}_{timestamp_str}.csv"
 
 
     output = StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        'Item Name', 'Total Prepared (T)', 'Senior Taken (S)', 'Available Stock (x)', 
+        'Item Name', 'Total Prepared (T)', 'Varishtha Vaishnava Taken (S)', 'Available Stock (x)', 
         'Consumed (T - S - x)','Total Devotees count' ,'Total Devotees Taken Prasadam','Remaining devotees to honour prasadam' ,'Estimated Available for Serving'
     ])
+    session_id=session.id
+    session_items = InitialPreparedItem.query.filter_by(session_id=session.id).all()
+    for ip_item in session_items:
+        # Calculate estimated devotee count who can take prasadam using formula: ((M+X)*D)/((T-S)-(M+X))
+        # T - "Total output received" of the item
+        # M - available stock in "Main Stock" counter
+        # X - Sum of available stocks in all normal counters
+        # S - available stock in "Varishtha Vaishnava" counter
+        # D - number of devotees taken prasadam in normal counters
+        # Returns: estimated number of devotees that can be served with remaining stock
+ 
+        item_name = ip_item.name
+        # Get T: Total output received for this item
+        item = InitialPreparedItem.query.filter_by(session_id=session_id, name=item_name).first()
+        if not item:
+            return 0
+        T = item.total_output_received
+        if T and T > 0:
+            T = round(T, 2)
 
-    # Use all item names encountered in either prepared or stock data
-    all_items = set(prepared_map.keys()).union(stock_map.keys())
+        # Get M: Available stock in "Main Stock" counter
+        main_stock = db.session.query(
+            func.coalesce(func.sum(func.coalesce(CounterItemStock.available_stock, 0)), 0)
+        ).join(
+            Counter, Counter.id == CounterItemStock.counter_id
+        ).filter(
+            CounterItemStock.session_id == session_id,
+            CounterItemStock.item_name == item_name,
+            Counter.name == 'Main Stock'
+        ).scalar()
+        M = main_stock if main_stock else 0
+        if M and M > 0:
+            M = round(M, 2)
+        
+        # Get X: Sum of available stocks in all normal counters (Counter 1-15)
+        normal_stock = db.session.query(
+            func.coalesce(func.sum(func.coalesce(CounterItemStock.available_stock, 0)), 0)
+        ).join(
+            Counter, Counter.id == CounterItemStock.counter_id
+        ).filter(
+            CounterItemStock.session_id == session_id,
+            CounterItemStock.item_name == item_name,
+            Counter.name.notin_(['Main Stock', 'Varishtha Vaishnava'])
+        ).scalar()
+        X = normal_stock if normal_stock else 0
+        if X and X > 0:
+            X = round(X, 2)
+        
+        # Get S: Available stock in "Varishtha Vaishnava" counter
+        Varishtha_stock = db.session.query(
+            func.coalesce(func.sum(func.coalesce(CounterItemStock.available_stock, 0)), 0)
+        ).join(
+            Counter, Counter.id == CounterItemStock.counter_id
+        ).filter(
+            CounterItemStock.session_id == session_id,
+            CounterItemStock.item_name == item_name,
+            Counter.name == 'Varishtha Vaishnava'
+        ).scalar()
+        S = Varishtha_stock if Varishtha_stock else 0
+        if S and S > 0:
+            S = round(S, 2)
+        
+        # Get D: Number of devotees taken prasadam
+        stats = GlobalStats.query.filter_by(session_id=session_id).first()
+        D = stats.total_devotees_taken if stats else 0
 
-    for name in all_items:
-        T = prepared_map.get(name, 0)
-        S = 0  # Adjust if you track senior_taken per session/item elsewhere
-        x = stock_map.get(name, 0)
+        
+        # Calculate formula: ((M+X)*D)/((T-S)-(M+X))
+        numerator = (M + X) * D
+        denominator = (T - S) - (M + X)
+        total_consumed = max(denominator, 0)
+        if total_consumed > 0:
+            total_consumed = round(total_consumed, 2)
+        
+        if denominator > 0 and numerator >= 0:
+            estimated_count = numerator / denominator
+            estimated_count = math.floor(estimated_count)
+        else:
+            estimated_count = 0
 
-        consumed = max(T - S - x, 0)
+        status = 'OK'
 
-        denominator = max(T - S - x, 1)
-        est_available = int(x * total_devotees_taken / denominator) if denominator > 0 and total_devotees_taken > 0 else x
+        if estimated_count >= remaining_devotees_to_honour_prasadam + 50 :
+            status = 'success'
+        elif estimated_count >= remaining_devotees_to_honour_prasadam or numerator == 0:
+            status = 'ok'
+        else :
+            status = 'danger'
 
-        writer.writerow([name, T, S, x, consumed,total_devotees_count,total_devotees_taken,remaining_devotees_to_honour_prasadam ,est_available])
+
+    writer.writerow([item_name, T, S, (M+X), total_consumed,total_devotees_count,total_devotees_taken,remaining_devotees_to_honour_prasadam ,estimated_count])
 
     # Save feeding session snapshot in DB linked to current session
-    snapshot = PreviousSavedSessions(data=output.getvalue(), session_id=active_session.id,filename=filename,timestamp=timestamp_str)
+    snapshot = PreviousSavedSessions(data=output.getvalue(), session_id=session.id,filename=filename,timestamp=timestamp_str)
     db.session.add(snapshot)
     db.session.commit()
 
-    flash(f"Snapshot saved for session '{active_session.session_name}'.", "success")
+    flash(f"Snapshot saved for session '{session.session_name}'.", "success")
     return redirect(url_for('saved_sessions'))
 
 @app.route('/admin/saved_sessions')
@@ -1314,34 +1367,7 @@ def init_db():
         return "Database tables deleted and recreated successfully.", 200
     except Exception as e:
         return f"Error initializing database: {str(e)}", 500
-        
-@app.route('/initialise_database_tables', methods=['POST','GET'])
-def initialise_database_tables():
-    try:
-        # Drop all tables with cascade
-        db.session.execute(text('DROP SCHEMA public CASCADE;'))
-        db.session.execute(text('CREATE SCHEMA public;'))
-        db.session.commit()
 
-        # Create all tables
-        db.create_all()
-        # Create default admin if none exists
-        admin_user = User.query.filter_by(is_admin=True).first()
-        if not admin_user:
-            admin_password = 'adminpass'  # Change to secure password or load from env
-            admin = User(username='admin', is_admin=True)
-            admin.set_password(admin_password)
-            db.session.add(admin)
-            db.session.commit()
-            print('Default admin user created with username: admin and password: adminpass')
-
-        # Create default counters if they don't exist
-        create_default_counters()
-
-        sync_initial_items_to_counters()
-        return "Database tables deleted and recreated successfully.", 200
-    except Exception as e:
-        return f"Error initializing database: {str(e)}", 500
 
 
 if __name__ == '__main__':
