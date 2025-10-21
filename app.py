@@ -128,8 +128,8 @@ class UserItemOrder(db.Model):
     item_order = db.Column(db.Text, nullable=False)  # JSON array of item names in custom order (e.g., ["Dal", "Rice", "Curry"])
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    user = db.relationship('User', backref='item_orders')
-    session = db.relationship('InitialPreparedSession', backref='user_orders')
+    user = db.relationship('User', backref=db.backref('item_orders', cascade='all, delete-orphan', passive_deletes=True))
+    session = db.relationship('InitialPreparedSession', backref=db.backref('user_orders', cascade='all, delete-orphan', passive_deletes=True))
     
     __table_args__ = (
         db.UniqueConstraint('user_id', 'session_id', name='uq_user_session_order'),
