@@ -120,6 +120,21 @@ class StockResetNotification(db.Model):
             ack_ids.append(str(counter_id))
             self.acknowledged_by_counters = ','.join(filter(None, ack_ids))
 
+class UserItemOrder(db.Model):
+    """Store user's custom item display order for dashboard"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('initial_prepared_session.id', ondelete='CASCADE'), nullable=False, index=True)
+    item_order = db.Column(db.Text, nullable=False)  # JSON array of item names in custom order (e.g., ["Dal", "Rice", "Curry"])
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    user = db.relationship('User', backref='item_orders')
+    session = db.relationship('InitialPreparedSession', backref='user_orders')
+    
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'session_id', name='uq_user_session_order'),
+    )
+
 # Decorators
 def login_required(f):
     @wraps(f)
@@ -314,12 +329,34 @@ def home():
     active_session = InitialPreparedSession.query.filter_by(is_active=True).first()
     items = []
 
-    items = []
     if active_session:
         items = CounterItemStock.query.filter_by(
             counter_id=counter.id,
             session_id=active_session.id
-        ).order_by(CounterItemStock.id).all()  # Display items in fixed order everytime
+        ).order_by(CounterItemStock.id).all()
+        
+        # Apply user's custom item order if exists for this session
+        user_order = UserItemOrder.query.filter_by(
+            user_id=user.id,
+            session_id=active_session.id
+        ).first()
+        if user_order:
+            try:
+                import json
+                ordered_names = json.loads(user_order.item_order)
+                # Create a mapping for quick lookup by item name
+                items_map = {item.item_name: item for item in items}
+                # Reorder items based on saved order, keeping items not in order at the end
+                ordered_items = []
+                for item_name in ordered_names:
+                    if item_name in items_map:
+                        ordered_items.append(items_map[item_name])
+                        del items_map[item_name]
+                # Add any remaining items not in the saved order
+                ordered_items.extend(items_map.values())
+                items = ordered_items
+            except (ValueError, KeyError):
+                pass  # If JSON parsing fails, use default order
     
     no_active_session = active_session is None
 
@@ -791,6 +828,54 @@ def acknowledge_reset(notification_id, counter_id):
     db.session.commit()
     
     return jsonify({"success": True})
+
+
+@app.route('/save_item_order', methods=['POST'])
+@login_required
+def save_item_order():
+    """Save user's custom item display order using item names for current session"""
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    
+    # Get current active session
+    active_session = InitialPreparedSession.query.filter_by(is_active=True).first()
+    if not active_session:
+        return jsonify({"success": False, "error": "No active session"}), 400
+    
+    data = request.get_json()
+    item_names = data.get('item_order', [])
+    
+    if not item_names or not isinstance(item_names, list):
+        return jsonify({"success": False, "error": "Invalid item order"}), 400
+    
+    try:
+        import json
+        # Check if user already has a saved order for this session
+        user_order = UserItemOrder.query.filter_by(
+            user_id=user.id,
+            session_id=active_session.id
+        ).first()
+        
+        if user_order:
+            # Update existing order
+            user_order.item_order = json.dumps(item_names)
+            user_order.updated_at = datetime.utcnow()
+        else:
+            # Create new order entry for this user + session
+            user_order = UserItemOrder(
+                user_id=user.id,
+                session_id=active_session.id,
+                item_order=json.dumps(item_names)
+            )
+            db.session.add(user_order)
+        
+        db.session.commit()
+        return jsonify({"success": True, "message": "Item order saved"})
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
 
         
 @app.route('/admin/save_snapshot', methods=['POST'])
