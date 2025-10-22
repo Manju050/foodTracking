@@ -23,6 +23,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 
+
 # Models
 class InitialPreparedSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
